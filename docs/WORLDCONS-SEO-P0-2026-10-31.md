@@ -488,3 +488,75 @@ XML parity, response latency, Workers errors, and the GSC sitemap
 Do not claim a successful Google re-submission, full-source snapshot
 parity, property-wide indexing gain, or P95 improvement based only
 on these samples. No browser, PR or GitHub push was used.
+
+## 2026-10-31 afternoon: Google discovery and archive pagination
+
+### GSC ground truth (read-only, current connection only)
+
+- Search Console property `https://worldcons.cclib.workers.dev/`
+  reports `siteOwner`; the submitted sitemap's `lastDownloaded`
+  remains **2026-10-19T23:08:57Z**, `lastSubmitted` remains
+  **2026-10-01T05:43:43Z**, with zero warnings/errors and 2,839
+  reported submitted URLs. The current live sitemap advertises 3,609;
+  this is not evidence that Google has retrieved the newer XML.
+- Search Analytics finalized data for **Oct 1–28, 2026** shows
+  **0 clicks and 1 impression** (Oct 18), entirely from the homepage.
+- URL Inspection: homepage **Submitted and indexed**, robots
+  `ALLOWED`, fetch `SUCCESSFUL`, matching canonical,
+  last crawled **2026-10-01T05:47:35Z** as mobile. The sampled
+  German Oct 7 and French Aug 14 case URLs remain
+  `URL is unknown to Google`. Do not infer property-wide
+  indexing totals from this small sample.
+- The existing GSC MCP connection has read access but does not
+  have `gsc:write`. The previous 403 submission was not retried;
+  no OAuth reconnection or Google write was attempted.
+
+### Production HTTP and Cloudflare observational evidence
+
+- Confirmed Worker `e673c119-0086-40c2-a76c-3805baa7092d`,
+  100% traffic, sitemap-only JSON1 enabled, other optimization
+  flags absent.
+- In the queried 2026-10-30/31 Cloudflare Workers telemetry
+  interval, a Googlebot user-agent filter returned no matching
+  events. This is limited to the available sampled/retained
+  telemetry, not proof Google never visited.
+- A Naver Yeti bot hit `/tags/bverfgg` with HTTP 500 on the
+  earlier Worker `7039e41f`; the same route currently returns
+  HTTP 200. `/tags` currently serves around 2.03 MB of HTML
+  with 1,256 unique tag anchors, while `/tags/bverfgg` serves
+  around 1.18 MB and 50 unique article anchors. A later tag hub
+  response-size improvement is possible but not yet implemented.
+- Direct server HTML inspection without a browser: homepage
+  exposes 4 unique article links; `/list` exposes approximately
+  15 unique article links and ordinary pagination anchors.
+  Page 2 and page 3 render distinct article records server-side.
+
+### Confirmed canonical defect and scoped implementation
+
+- Live `/list?page=2` and `/list?page=3` both formerly
+  advertised canonical `/list` despite separate published
+  article lists and real previous/next anchors. The pages were
+  discoverable without JavaScript, but their canonical metadata
+  instructed crawlers to consolidate with the first page.
+- Added `lib/seo/list-pagination.ts` and switched
+  `app/list/page.tsx` from one static canonical to
+  request-specific `generateMetadata()`. Unfiltered valid
+  archive pages N ≥ 2 self-canonicalize to `/list?page=N`;
+  page 1 uses canonical `/list`. Filtered/search combinations
+  and invalid page numbers receive `noindex, follow` and
+  canonical `/list` to avoid filtered URL explosion.
+- Article source URLs, visible pagination UI, sitemap XML,
+  publication controls, and the global JSON1 feature switch
+  remain unchanged.
+- Dedicated canonical regression tests added to
+  `tests/seo-public-surface.test.ts`: public SEO **20/20 PASS**,
+  sitemap probe regression **11/11 PASS**, TypeScript typecheck
+  **EXIT 0**, scoped ESLint **EXIT 0**, five-stage Vinext production
+  build **EXIT 0**, and Wrangler deploy dry-run **EXIT 0**.
+  The deployment and live canonical checks remain separate gates.
+  Wrangler dry-run retained sitemap-only JSON1=true and left
+  global JSON1/Fast Sitemap absent.
+- Additional GSC URL Inspections for archive page 2, German
+  `/tags/bverfgg`, and one Oct 23 French case returned
+  `URL is unknown to Google`. All of these are pre-rollout
+  baseline observations, not evidence of newly induced exclusion.

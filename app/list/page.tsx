@@ -10,15 +10,19 @@ import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS
 import { listArticles, listJurisdictionArticleCounts, listSources, listTags, listTopViewedArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
+import { publicListPaginationMetadata } from "@/lib/seo/list-pagination";
 import { articleFiltersFromSearchParams, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const revalidate = 60;
 
-export const metadata: Metadata = {
-  title: "리스트형 최신 자료",
-  description: "세계 헌법재판기관의 최신 자료를 국가별 리스트와 페이지네이션으로 확인합니다.",
-  alternates: { canonical: `${getAppBaseUrl()}/list` },
-};
+export async function generateMetadata({ searchParams }: { searchParams?: Promise<SearchParams> }): Promise<Metadata> {
+  const params = await resolveSearchParams(searchParams);
+  return {
+    title: "리스트형 최신 자료",
+    description: "세계 헌법재판기관의 최신 자료를 국가별 리스트와 페이지네이션으로 확인합니다.",
+    ...publicListPaginationMetadata(params, getAppBaseUrl()),
+  };
+}
 
 const getListFilterData = unstable_cache(
   async (range: ArticleListFilters["range"]) => {

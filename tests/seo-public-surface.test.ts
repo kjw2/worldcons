@@ -5,6 +5,7 @@ import test from "node:test";
 import { getAppBaseUrl, isIndexablePublicTag, publicAbsoluteUrl, publicPath } from "../lib/seo/public-urls";
 import { articleMetadata, siteVerificationMetadata, tagMetadata } from "../lib/seo/metadata";
 import { articleBreadcrumbJsonLd, articleJsonLd } from "../lib/seo/jsonld";
+import { publicListPaginationMetadata } from "../lib/seo/list-pagination";
 import {
   resilientSitemapRead,
   SITEMAP_SOURCE_RETRY_DELAY_MS,
@@ -20,6 +21,44 @@ test("public paths strip the legacy /v2 prefix and keep clean URLs", () => {
   assert.equal(publicPath("/v2/list"), "/list");
   assert.equal(publicPath("/articles/example"), "/articles/example");
   assert.equal(publicAbsoluteUrl("/v2/articles/example"), `${getAppBaseUrl()}/articles/example`);
+});
+
+test("unfiltered archive pagination uses self-canonical pages while filter/search URLs stay noindex", () => {
+  const baseUrl = getAppBaseUrl();
+  const base = publicListPaginationMetadata({}, baseUrl);
+  assert.deepEqual(base, { alternates: { canonical: `${baseUrl}/list` } });
+  for (const page of [2, 3, 229]) {
+    assert.deepEqual(
+      publicListPaginationMetadata({ page: String(page) }, baseUrl),
+      { alternates: { canonical: `${baseUrl}/list?page=${page}` } },
+      `archive page ${page} must not canonicalize to the first page`,
+    );
+  }
+  assert.deepEqual(
+    publicListPaginationMetadata({ page: "2", range: "latest" }, baseUrl),
+    { alternates: { canonical: `${baseUrl}/list?page=2` } },
+  );
+  for (const params of [
+    { page: "2", jurisdiction: "Germany" },
+    { page: "2", tag: "bverfgg" },
+    { page: "2", q: "free speech" },
+    { page: "2", source: "de-bverfg" },
+    { page: "2", range: "month" },
+  ]) {
+    assert.deepEqual(
+      publicListPaginationMetadata(params, baseUrl),
+      { alternates: { canonical: `${baseUrl}/list` }, robots: { index: false, follow: true } },
+    );
+  }
+  for (const page of ["0", "-1", "2.5", "NaN", "10001"]) {
+    assert.deepEqual(
+      publicListPaginationMetadata({ page }, baseUrl),
+      { alternates: { canonical: `${baseUrl}/list` }, robots: { index: false, follow: true } },
+    );
+  }
+  const listSource = fs.readFileSync(path.join(process.cwd(), "app/list/page.tsx"), "utf8");
+  assert.match(listSource, /export async function generateMetadata/u);
+  assert.match(listSource, /publicListPaginationMetadata\(params, getAppBaseUrl\(\)\)/u);
 });
 
 test("Google and Naver ownership verification surfaces stay deployable on the Workers host", () => {
