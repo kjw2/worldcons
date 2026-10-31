@@ -10,6 +10,50 @@ import {consumeSearchRepair} from '@/lib/cloudflare/e2e/search-repair-consumer';
 import type {SearchProjectionDocument,SearchProjectionFtsDocument} from '@/lib/cloudflare/search-projection/types';
 async function fixture(t:test.TestContext){const core=new SqliteD1(),search=new SqliteD1('search');t.after(()=>{core.close();search.close()});core.db.exec(readFileSync(new URL('../d1/worldcons_core/0011_search_metadata_repair.sql',import.meta.url),'utf8'));search.db.exec(readFileSync(new URL('../d1/worldcons_search/0003_metadata_projection_guards.sql',import.meta.url),'utf8'));await publish(core,'legacy',{e2eApproval:undefined});core.db.exec('UPDATE search_metadata_policy_v1 SET public_read_required=1');return {core,search,bindings:{WORLDCONS_CORE:core,WORLDCONS_SEARCH:search}};}
 function desired(search:SqliteD1){return {document:search.rows('search_documents')[0] as unknown as SearchProjectionDocument,fts:search.rows('search_fts')[0] as unknown as SearchProjectionFtsDocument};}
+
+test('repeated full search sync does not invalidate a verified unchanged publication or rebuild its index',async(t)=>{
+ const f=await fixture(t);
+ const first=await syncSearchProjectionForArticle(f.bindings,articleId);
+ assert.equal(first.desiredEligible,true);
+ const before=f.core.rows('search_metadata_repairs_v1')[0];
+ const attemptsBefore=f.core.rows('search_metadata_attempts_v1').length;
+ const documentBefore=desired(f.search);
+ const second=await syncSearchProjectionForArticle(f.bindings,articleId);
+ assert.deepEqual(second.changes,{added:0,changed:0,removed:0,unchanged:1});
+ const scan=await runNativeSearchProjectionSync(f.bindings);
+ assert.equal(scan.verified,true);
+ const after=f.core.rows('search_metadata_repairs_v1')[0];
+ assert.equal(after.status,'verified');
+ assert.equal(after.revision,before.revision,'unchanged sync must not bump approval revision');
+ assert.equal(after.fencing_token,before.fencing_token,'unchanged sync must not change the CAS fence');
+ assert.equal(after.applied_revision,before.applied_revision);
+ assert.equal(f.core.rows('search_metadata_attempts_v1').length,attemptsBefore);
+ assert.deepEqual(desired(f.search),documentBefore);
+ await assertPublicSearchFreshness(f.core,f.search,[articleId]);
+});
+
+test('verified metadata with damaged FTS or an actual tag change must still be invalidated and repaired',async(t)=>{
+ const f=await fixture(t);
+ await syncSearchProjectionForArticle(f.bindings,articleId);
+ const approved=f.core.rows('search_metadata_repairs_v1')[0];
+ f.search.db.exec("UPDATE search_fts SET title='corrupt'");
+ const repaired=await syncSearchProjectionForArticle(f.bindings,articleId);
+ assert.equal(repaired.verified,true);
+ assert.notEqual(desired(f.search).fts.title,'corrupt');
+ const afterDamage=f.core.rows('search_metadata_repairs_v1')[0];
+ assert.equal(Number(afterDamage.revision),Number(approved.revision)+1);
+ assert.equal(afterDamage.status,'verified');
+ f.core.db.exec("INSERT INTO tags(id,slug,name,normalized_name,type,created_at,updated_at) VALUES('tag-real','real-update','진짜 변경','진짜 변경','topic','now','now');INSERT INTO article_tags(article_id,tag_id,created_at) VALUES('"+articleId+"','tag-real','now')");
+ const pending=f.core.rows('search_metadata_repairs_v1')[0];
+ assert.equal(pending.status,'pending');
+ const updated=await syncSearchProjectionForArticle(f.bindings,articleId);
+ assert.equal(updated.verified,true);
+ assert.match(String(desired(f.search).document.tags_text),/진짜 변경/);
+ const verified=f.core.rows('search_metadata_repairs_v1')[0];
+ assert.equal(verified.revision,pending.revision,'sync must not invalidate an already pending Core trigger revision again');
+ assert.equal(verified.applied_revision,pending.revision);
+ await assertPublicSearchFreshness(f.core,f.search,[articleId]);
+});
 test('metadata journal is atomic with tags and repair survives Worker restart without P3 or generation changes',async(t)=>{const f=await fixture(t);await assert.rejects(assertPublicSearchFreshness(f.core,f.search,[articleId]),/metadata_pending/);await assert.rejects(overlayPublicGenerationRows(f.core,f.core.rows('articles')),/metadata_pending/);await syncSearchProjectionForArticle(f.bindings,articleId);await assertPublicSearchFreshness(f.core,f.search,[articleId]);const versions=f.core.rows('article_content_versions_p3').length;
  f.core.db.exec("INSERT INTO tags(id,slug,name,normalized_name,type,created_at,updated_at) VALUES('tag','equal','평등','평등','topic','now','now');INSERT INTO article_tags(article_id,tag_id,created_at) VALUES('"+articleId+"','tag','now')");await assert.rejects(assertPublicSearchFreshness(f.core,f.search,[articleId]),/metadata_pending/);assert.equal((await drainSearchMetadataRepairs(f.bindings)).failed,0);await assertPublicSearchFreshness(f.core,f.search,[articleId]);assert.match(String(f.search.rows('search_documents')[0].tags_text),/평등/);assert.equal(f.core.rows('article_content_versions_p3').length,versions);assert.equal(f.core.rows('e2e_generation_heads_v1').length,0);assert.equal(f.core.rows('search_metadata_repairs_v1')[0].status,'verified');
  f.core.db.exec('BEGIN');f.core.db.exec("UPDATE tags SET name='rollback'");f.core.db.exec('ROLLBACK');assert.equal(f.core.rows('search_metadata_repairs_v1')[0].status,'verified');});

@@ -7,7 +7,9 @@ import {createIngestStageHandlers,enqueueIngestStageDiscovery,type IngestStageRa
 import {discoverNativeStageCandidates,nativeStageCandidateId,type NativeCrawlerBindings,type NativeStageCandidate} from "../workers/async-pipeline/src/native-crawler";
 import type {IngestStageHandlerContext} from "../workers/async-pipeline/src/ingest-stage-consumer";
 import {buildIngestStageQueueMessage} from "../lib/cloudflare/ingest-stages/contracts";
-const NOW=new Date().toISOString(),SOURCE="fr-conseil-constitutionnel";
+// Freeze this fixture within the October 11 candidate's 14-day discovery
+// window. Wall-clock time made the test fail after October 25, 2026.
+const NOW="2026-10-20T00:00:00.000Z",SOURCE="fr-conseil-constitutionnel";
 const candidate=(n:number):NativeStageCandidate=>({sourceKey:SOURCE,url:"https://www.conseil-constitutionnel.fr/decision/2026/2026"+n+"QPC.htm",title:"Décision n° 2026-"+n+" QPC du 11 octobre 2026",publishedAt:"2026-10-11T00:00:00.000Z",contentType:"decision",metadata:{collection:{strategy:"official-listing"}}});
 function fixture(t:{after(fn:()=>void):void}) {
   const core=new SqliteD1(),ingest=new SqliteD1("ingest"),search=new SqliteD1("search");

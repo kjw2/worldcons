@@ -1,5 +1,6 @@
 import { metadataRepairReady, invalidateSearchMetadata, claimMetadataRepair, finishMetadataRepair, applyMetadataProjection } from "./metadata-repair";
 import {sha256Canonical} from "../e2e/contracts";
+import { projectionFingerprints } from "../e2e/search-generation-guard";
 import { currentGenerations, e2eRows, hasE2ETable } from "../e2e/generation-state";
 import { buildSearchProjection } from "./build";
 import { planSearchProjectionIncrementalSync } from "./plan";
@@ -545,6 +546,59 @@ export interface SyncSearchProjectionForArticleResult {
 }
 
 /**
+ * A full search sync visits every managed article, including ones that have
+ * already been verified. Do not invalidate an approved Core metadata record
+ * just because it was visited again. First prove the current immutable
+ * publication, tags, search documents, FTS body and Search guard all match.
+ * A missing/corrupt guard or changed input falls through to the existing
+ * durable revision+fencing repair path.
+ */
+async function verifiedLegacyMetadataProjectionMatches(
+  bindings: SearchProjectionSyncBindings,
+  articleId: string,
+  state: Record<string, unknown>,
+): Promise<SyncSearchProjectionForArticleResult | null> {
+  if (state.status !== "verified" || Number(state.revision) !== Number(state.applied_revision)) return null;
+  const sources = await readEligibleSourceForArticle(bindings.WORLDCONS_CORE, articleId);
+  // A private/rejected review can require a Core publication withdrawal, even
+  // if the search index currently matches the last public snapshot.
+  if (sources.some(row => ["needs_review","needs_triage","closed_private","rejected","blocked"].includes(String(row.review_state)))) return null;
+  const tags = sources.length ? await readTagsForArticleIds(bindings.WORLDCONS_CORE,[articleId]) : [];
+  const built = buildSearchProjection(buildSearchProjectionInputFromEligibleRows(sources,tags));
+  const wantedDocument = built.documents[0] ?? null;
+  const wantedFts = built.ftsDocuments[0] ?? null;
+  const [guardRows, documentRows, ftsRows] = await Promise.all([
+    e2eRows(bindings.WORLDCONS_SEARCH,"SELECT * FROM search_metadata_guards_v1 WHERE article_id=?",articleId),
+    e2eRows(bindings.WORLDCONS_SEARCH,"SELECT * FROM search_documents WHERE article_id=?",articleId),
+    e2eRows(bindings.WORLDCONS_SEARCH,"SELECT * FROM search_fts WHERE article_id=?",articleId),
+  ]);
+  const guard = guardRows[0];
+  const expected = await projectionFingerprints(wantedDocument,wantedFts);
+  const actual = await projectionFingerprints(
+    documentRows.length===1 ? documentRows[0] as unknown as SearchProjectionDocument : null,
+    ftsRows.length===1 ? ftsRows[0] as unknown as import("./types").SearchProjectionFtsDocument : null,
+  );
+  const eligible = wantedDocument!==null && wantedFts!==null;
+  if (!guard || Number(guard.revision)!==Number(state.revision)
+    || Number(guard.fencing_token)!==Number(state.fencing_token)
+    || Number(guard.tombstone)!==Number(!eligible)
+    || guard.document_fingerprint!==expected.documentFingerprint
+    || guard.fts_fingerprint!==expected.ftsFingerprint
+    || actual.documentFingerprint!==expected.documentFingerprint
+    || actual.ftsFingerprint!==expected.ftsFingerprint
+    || documentRows.length!==Number(eligible) || ftsRows.length!==Number(eligible)) return null;
+  // A Core trigger can invalidate the row while we are reading Search D1.
+  // The exact same revision, fence and verified status must still be present.
+  const latest = (await e2eRows(bindings.WORLDCONS_CORE,
+    "SELECT status,revision,applied_revision,fencing_token FROM search_metadata_repairs_v1 WHERE article_id=?",articleId))[0];
+  if (!latest || latest.status!=="verified" || Number(latest.revision)!==Number(state.revision)
+    || Number(latest.applied_revision)!==Number(state.applied_revision)
+    || Number(latest.fencing_token)!==Number(state.fencing_token)) return null;
+  return {articleId,desiredEligible:eligible,documentCount:Number(eligible),ftsCount:Number(eligible),
+    changes:{added:0,changed:0,removed:0,unchanged:1},verified:true};
+}
+
+/**
  * Projects exactly one article/version into `worldcons_search`.
  *
  * This is the per-article primitive the staged `search` handler uses instead of
@@ -561,6 +615,17 @@ export interface SyncSearchProjectionForArticleResult {
  */
 export async function syncSearchProjectionForArticle(bindings: SearchProjectionSyncBindings, articleId: string): Promise<SyncSearchProjectionForArticleResult> {
   if(!await metadataRepairReady(bindings.WORLDCONS_CORE,bindings.WORLDCONS_SEARCH))return syncArticleProjection(bindings,articleId);
+  const initial=(await e2eRows(bindings.WORLDCONS_CORE,"SELECT * FROM search_metadata_repairs_v1 WHERE article_id=?",articleId))[0];
+  if(initial?.status==="verified") {
+    const generation=(await currentGenerations(bindings.WORLDCONS_CORE,[articleId])).get(articleId);
+    // E2E-managed records already have an independent protected generation
+    // guard; do not open a new legacy metadata repair on every full scan.
+    if (generation) return syncArticleProjection(bindings,articleId);
+    const unchanged=await verifiedLegacyMetadataProjectionMatches(bindings,articleId,initial);
+    if(unchanged)return unchanged;
+  }
+  // Re-read after the verification attempt: if a concurrent Core mutation
+  // already invalidated metadata, never overwrite its pending revision.
   const current=(await e2eRows(bindings.WORLDCONS_CORE,"SELECT * FROM search_metadata_repairs_v1 WHERE article_id=?",articleId))[0];
   if(!current || current.status==='verified')await invalidateSearchMetadata(bindings.WORLDCONS_CORE,articleId);
   const claim=await claimMetadataRepair(bindings.WORLDCONS_CORE,articleId);
