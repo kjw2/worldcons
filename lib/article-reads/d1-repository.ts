@@ -88,6 +88,12 @@ export interface D1ArticleReadDependencies {
    * decide the public URL set.
    */
   fastSitemap?: boolean;
+  /**
+   * Sitemap-only JSON1 guard optimization. Unlike the global switch it does
+   * not affect search, details, or other public repository read methods.
+   * Explicit false forces legacy guard reads even if the global switch is on.
+   */
+  sitemapJsonGuard?: boolean;
 }
 
 const LIST_COLUMNS = [
@@ -1081,7 +1087,7 @@ export function createD1ArticleReadRepository(
     }
     if (rows.length === 0) return [];
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("listPublicSitemapArticles");
-    return (await overlayPublicGenerationRows(binding,rows)).filter((row) => isTextuallyPublishable(row)).flatMap((row) => {
+    return (await overlayPublicGenerationRows(binding,rows,{ jsonBatching: dependencies.sitemapJsonGuard })).filter((row) => isTextuallyPublishable(row)).flatMap((row) => {
       if (typeof row.slug !== "string" || row.slug.length === 0) return [];
       const lastModified =
         (row.summarized_at as string | null | undefined) ||

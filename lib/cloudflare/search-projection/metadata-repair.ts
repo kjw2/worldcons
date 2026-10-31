@@ -64,7 +64,7 @@ export async function drainSearchMetadataRepairs(bindings:{WORLDCONS_CORE:D1Runt
 }
 
 /** Batched Core read gate; disabled until both compatible workers are deployed. */
-export async function readPublicMetadataState(core:D1RuntimeDatabase,ids:readonly string[],managed:Set<string>) {
+export async function readPublicMetadataState(core:D1RuntimeDatabase,ids:readonly string[],managed:Set<string>,options:{jsonBatching?:boolean}={}) {
   const states=new Map<string,GenerationRow>();
   // The state is keyed by article id, so duplicate inputs cannot change it.
   // Deduplicate before the bounded JSON1 guard reads, matching assertPublicSearchFreshness.
@@ -75,6 +75,7 @@ export async function readPublicMetadataState(core:D1RuntimeDatabase,ids:readonl
   const legacy=uniqueIds.filter(id=>!managed.has(id));
   const rows=await readBatchedByIds({
     ids:legacy,
+    jsonBatching:options.jsonBatching,
     readJsonBatch:(payload,limit)=>e2eRows(core,`SELECT m.* FROM json_each(?) AS ids JOIN search_metadata_repairs_v1 m ON m.article_id=ids.value LIMIT ?`,payload,limit),
     readLegacyBatch:(part)=>e2eRows(core,`SELECT * FROM search_metadata_repairs_v1 WHERE article_id IN (${part.map(()=>"?").join(",")})`,...part),
   });

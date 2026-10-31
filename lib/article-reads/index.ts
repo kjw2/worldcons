@@ -22,6 +22,9 @@ export function articleReads(): ArticleReadRepository {
         // P0 candidate: leave inactive until real cold-path latency and
         // public eligibility parity have been independently verified.
         fastSitemap: process.env.WORLDCONS_FAST_SITEMAP_ENABLED === "true",
+        // Separate, sitemap-only opt-in; shared public reads keep their
+        // existing global guard policy and are never changed by this flag.
+        sitemapJsonGuard: process.env.WORLDCONS_SITEMAP_JSON_GUARD_BATCHING_ENABLED === "true",
       })
     : mockArticleReads;
 }

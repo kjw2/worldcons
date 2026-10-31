@@ -21,7 +21,7 @@ export function generationProjectionHash(g: GenerationRow, tags: unknown, review
     publicationRevision:Number(g.expected_publication_revision),publicationState:g.expected_publication_state,
     tags:g.policy_version===REMOVAL_AUTHORITY_POLICY?[]:tags,reviewState:g.policy_version===REMOVAL_AUTHORITY_POLICY?null:reviewState ?? null,projectionVersion:SEARCH_PROJECTION_VERSION,ftsInputVersion:FTS_INPUT_VERSION });
 }
-export async function currentGenerations(db: D1RuntimeDatabase, ids: readonly string[]) {
+export async function currentGenerations(db: D1RuntimeDatabase, ids: readonly string[], options: { jsonBatching?: boolean } = {}) {
   const found = new Map<string,GenerationRow>();
   // The result is keyed by article id, so duplicate inputs cannot change it.
   // Deduplicate first so repeated keys (for example a projection without `id`)
@@ -37,6 +37,7 @@ export async function currentGenerations(db: D1RuntimeDatabase, ids: readonly st
       LEFT JOIN articles a ON a.id=g.article_id`;
   const rows=await readBatchedByIds({
     ids:uniqueIds,
+    jsonBatching: options.jsonBatching,
     readJsonBatch:(payload,limit)=>e2eRows(db,`${select}
       FROM json_each(?) AS ids
       JOIN e2e_generation_heads_v1 h ON h.article_id=ids.value

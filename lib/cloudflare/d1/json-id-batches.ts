@@ -68,12 +68,14 @@ export async function readBatchedByIds<T>(options: {
   ids: readonly string[];
   readJsonBatch: (payload: string, limit: number) => Promise<T[]>;
   readLegacyBatch: (ids: readonly string[]) => Promise<T[]>;
+  /** Request-local override; undefined preserves the existing global policy. */
+  jsonBatching?: boolean;
 }): Promise<T[]> {
   const unique = [...new Set(options.ids)];
   if (unique.length === 0) return [];
   // This helper is shared by public read paths beyond the sitemap. Keep the
   // new batching algorithm disabled until separately accepted in production.
-  if (process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED !== "true") {
+  if (!(options.jsonBatching ?? (process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED === "true"))) {
     const rows: T[] = [];
     for (const batch of legacyIdBatches(unique)) rows.push(...await options.readLegacyBatch(batch));
     return rows;

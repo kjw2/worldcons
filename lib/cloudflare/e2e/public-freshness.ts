@@ -59,9 +59,9 @@ export async function assertPublicSearchFreshness(core:D1RuntimeDatabase,search:
 }
 
 /** Public Core content comes from the approved immutable P3, never mutable drafts. */
-export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:GenerationRow[]) {
-  const ids=rows.map(row=>String(row.id)), generations=await currentGenerations(core,ids);
-  const metadata=await readPublicMetadataState(core,ids,new Set(generations.keys()));
+export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:GenerationRow[],options:{jsonBatching?:boolean}={}) {
+  const ids=rows.map(row=>String(row.id)), generations=await currentGenerations(core,ids,options);
+  const metadata=await readPublicMetadataState(core,ids,new Set(generations.keys()),options);
   if (!generations.size && !metadata.size) return rows;
   const legacyVersions=new Map<string,GenerationRow>();
   const legacyIds=[...metadata.keys()];
@@ -82,8 +82,8 @@ export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:Ge
     for (const version of found) versions.set(String(version.id),version);
   }
   const result:GenerationRow[]=[];
-  const latest=await currentGenerations(core,ids);
-  const latestMetadata=await readPublicMetadataState(core,ids,new Set(latest.keys()));
+  const latest=await currentGenerations(core,ids,options);
+  const latestMetadata=await readPublicMetadataState(core,ids,new Set(latest.keys()),options);
   for(const [id,before] of metadata){const after=latestMetadata.get(id);if(before.revision!==after?.revision||before.fencing_token!==after?.fencing_token)throw new Error("e2e.public_metadata_changed");}
   for (const row of rows) {
     const g=generations.get(String(row.id));

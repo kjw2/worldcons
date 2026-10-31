@@ -121,9 +121,6 @@ async function seed(request: Request, env: Env): Promise<Response> {
 async function sitemap(url: URL, env: Env): Promise<Response> {
   const fastSitemap = flagValue(url.searchParams.get("fastSitemap"));
   const jsonGuard = flagValue(url.searchParams.get("jsonGuard"));
-  if (jsonGuard) process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = "true";
-  else delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
-  process.env.WORLDCONS_FAST_SITEMAP_ENABLED = fastSitemap ? "true" : "false";
 
   const { database, stats } = instrumentD1(env.WORLDCONS_CORE);
   setRuntimeD1Binding("worldcons_core", database);
@@ -131,6 +128,7 @@ async function sitemap(url: URL, env: Env): Promise<Response> {
   const repository = createD1ArticleReadRepository({
     binding: database,
     fastSitemap,
+    sitemapJsonGuard: jsonGuard,
     maxRows: 10_000,
   });
 

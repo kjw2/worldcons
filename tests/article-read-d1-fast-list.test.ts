@@ -1349,3 +1349,51 @@ test("JSON1 guard batching is disabled unless explicitly opted in", async () => 
     else process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = original;
   }
 });
+
+test("sitemap-scoped JSON1 uses local opt-in without changing ordinary public guard reads", async () => {
+  const original = process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+  delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+  const sqlite = createGuardCore();
+  try {
+    insertArticle(sqlite, "sitemap-scope");
+    await insertGeneration(sqlite, "sitemap-scope");
+
+    const sitemapCalls: Captured[] = [];
+    const optimized = await createD1ArticleReadRepository({
+      binding: binding(sqlite, sitemapCalls),
+      maxRows: 10_000,
+      sitemapJsonGuard: true,
+    }).listPublicSitemapArticles();
+    assert.deepEqual(optimized.map((entry) => entry.slug), ["sitemap-scope"]);
+    assert.ok(sitemapCalls.some((call) => call.sql.includes("FROM json_each(?) AS ids")));
+
+    const ordinaryCalls: Captured[] = [];
+    await currentGenerations(binding(sqlite, ordinaryCalls), ["sitemap-scope"]);
+    assert.ok(ordinaryCalls.some((call) => call.sql.includes("WHERE h.article_id IN (")));
+    assert.equal(ordinaryCalls.filter((call) => call.sql.includes("json_each")).length, 0);
+
+    const fallbackCalls: Captured[] = [];
+    const fallback = await createD1ArticleReadRepository({
+      binding: binding(sqlite, fallbackCalls, { failJsonEach: true }),
+      maxRows: 10_000,
+      sitemapJsonGuard: true,
+    }).listPublicSitemapArticles();
+    assert.deepEqual(fallback, optimized);
+    assert.ok(fallbackCalls.some((call) => call.sql.includes("FROM json_each(?) AS ids")));
+    assert.ok(fallbackCalls.some((call) => call.sql.includes("WHERE h.article_id IN (")));
+
+    process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = "true";
+    const forcedLegacyCalls: Captured[] = [];
+    const forcedLegacy = await createD1ArticleReadRepository({
+      binding: binding(sqlite, forcedLegacyCalls),
+      maxRows: 10_000,
+      sitemapJsonGuard: false,
+    }).listPublicSitemapArticles();
+    assert.deepEqual(forcedLegacy, optimized);
+    assert.equal(forcedLegacyCalls.filter((call) => call.sql.includes("json_each")).length, 0);
+  } finally {
+    sqlite.close();
+    if (original === undefined) delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+    else process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = original;
+  }
+});
