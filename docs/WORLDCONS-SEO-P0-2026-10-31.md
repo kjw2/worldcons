@@ -597,3 +597,76 @@ No browser, PR, Google write, production D1 write or OAuth
 reconnection was used. GitHub push was not performed. Next P0
 observation should compare GSC `lastDownloaded`, indexStatus
 samples, and external crawler access after the live metadata change.
+
+## 2026-10-31 later P0 continuation: tag-hub HTML size and crawler navigation
+
+### Problem and safety constraints
+
+The old `/tags` returned **2,027,648 bytes** of HTML, with
+**1,256 tag detail anchors** and about **1.29 million inline-script
+characters** in one response. This loads every published tag at once
+and unnecessarily increases page cost for humans and crawlers. The
+change must not modify published tag eligibility, tag-detail URLs,
+click analytics, or the canonical sitemap inventory.
+
+### Implementation and validation
+
+- Added pure `lib/seo/tag-hub-pagination.ts`: fixed 96-tag page
+  size, stable descending article count / ascending slug ordering,
+  strict page parsing, canonical page URLs and bounded result slices.
+- Updated `app/tags/page.tsx` to accept URL page numbers, render
+  only the selected 96 tags via the existing `TagHubList`, and render
+  all numbered server-side `<a href>` navigation plus previous/next.
+  `/tags` has canonical `/tags`; page N has canonical
+  `/tags?page=N`. Invalid/out-of-range page numbers are HTTP 404.
+- Kept the existing `TrackedLink` per-tag analytics and public
+  `listTags({sort:'count', minArticleCount:3})` eligibility. The
+  underlying D1 inventory is still read in full, so the measured
+  benefit is **HTML/render payload**, not yet reduced D1 reads.
+- New regression test checks 1,256 representative tags split into
+  14 pages with every slug present exactly once, stable ties, page
+  parsing, self-canonical metadata and server-side link wiring.
+- Verification passed: public SEO **21/21**, reference reads
+  **10/10**, sitemap probe **11/11**, `pnpm typecheck`,
+  scoped ESLint, five-stage `pnpm build:vinext`, and
+  Wrangler dry-run (**all EXIT 0**).
+- Local code committed as `6c1b3837158e0918b73deb2aaa9eee7f2b7386e1`.
+
+### Production results
+
+- Deployed `504d3c2d-bd40-44b2-9207-67cf6baff36a` at
+  **2026-10-31T09:19:36Z**; Cloudflare independently confirmed
+  **100% traffic** to this Worker and only sitemap-scoped JSON1
+  remains enabled.
+- Live `/tags` is **186,081 bytes**, down from
+  **2,027,648 bytes (~90.8% reduction)**, HTTP 200 and 96 tag links.
+  Page 2 has 96 tag links and 185,413 bytes; final page 14
+  has 8 links and 45,820 bytes. All return self-canonical HTML.
+- A complete production crawl of **all 14 tag index pages**
+  confirmed **14/14 HTTP 200**, **1,256 distinct tag URLs**,
+  **zero duplicates**, **14/14 self-canonical**, and all
+  14 page destinations linked from each page's server HTML.
+  Production Core D1 read-only `COUNT(*)` with
+  `article_count >= 3` returned exactly **1,256** matching
+  publishable index candidates. Page 15 and page 0 returned 404.
+- `/tags/bverfgg` remained HTTP 200. `/sitemap.xml` remained
+  HTTP 200 with **3,609 total URLs/2,287 article URLs**.
+  A short post-deployment Worker telemetry window
+  (2026-10-31 09:19:36Z–09:21:06Z) yielded zero observed
+  HTTP 5xx; this is **not** a long-term error-rate guarantee.
+- GSC sitemap metadata remains unchanged:
+  `lastDownloaded=2026-10-19T23:08:57.582Z`. There was no new
+  GSC write or OAuth prompt. An HTML response improvement cannot
+  itself confirm a Googlebot re-download or indexing gain.
+
+### Next P0 focus
+
+The `/tags/bverfgg` detail route still returns roughly **1.18 MB**
+of HTML and contains 50 article links plus numerous related-tag links;
+investigate a bounded server-rendered detail listing without losing
+article discoverability. Continue read-only GSC and available crawler
+telemetry checks. Do not infer that Googlebot has indexed new case URLs
+until URL Inspection or equivalent independent evidence changes.
+
+No browser, PR, GitHub push, production D1 mutation, Google write,
+or OAuth reconnection was performed in this continuation.
