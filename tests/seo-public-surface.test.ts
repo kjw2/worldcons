@@ -6,6 +6,7 @@ import { getAppBaseUrl, isIndexablePublicTag, publicAbsoluteUrl, publicPath } fr
 import { articleMetadata, siteVerificationMetadata, tagMetadata } from "../lib/seo/metadata";
 import { articleBreadcrumbJsonLd, articleJsonLd } from "../lib/seo/jsonld";
 import { publicListPaginationMetadata } from "../lib/seo/list-pagination";
+import { parseTagDetailPage, paginatedTagMetadata, TAG_DETAIL_PAGE_SIZE, tagDetailPageHref } from "../lib/seo/tag-detail-pagination";
 import { TAG_HUB_PAGE_SIZE, paginateTagHub, parseTagHubPage, tagHubMetadata, tagHubPageHref } from "../lib/seo/tag-hub-pagination";
 import {
   resilientSitemapRead,
@@ -108,6 +109,39 @@ test("tag hub bounds server-rendered pages and retains a complete reachable set 
   assert.match(tagsSource, /tagHubMetadata\(parseTagHubPage\(params\.page\)/u);
   assert.match(tagsSource, /href=\{tagHubPageHref\(target\)\}/u);
   assert.match(tagsSource, /<TagHubList tags=\{pagination\.tags\}/u);
+});
+
+test("tag detail paginates article cards without losing crawlable page identity", () => {
+  assert.equal(TAG_DETAIL_PAGE_SIZE, 10);
+  assert.equal(parseTagDetailPage(undefined), 1);
+  assert.equal(parseTagDetailPage("2"), 2);
+  for (const bad of ["", "0", "01", "-1", "2.3", "10001", "Infinity"]) {
+    assert.equal(parseTagDetailPage(bad), null);
+  }
+  assert.equal(parseTagDetailPage(["2", "3"]), null);
+  assert.equal(tagDetailPageHref("bverfgg", 1), "/tags/bverfgg");
+  assert.equal(tagDetailPageHref("bverfgg", 5), "/tags/bverfgg?page=5");
+  const tag = {
+    slug: "bverfgg",
+    name: "독일 연방헌법재판소",
+    normalizedName: "bverfgg",
+    type: "topic" as const,
+    articleCount: 50,
+  };
+  const original = tagMetadata(tag);
+  assert.deepEqual(paginatedTagMetadata(tag, 1), original);
+  const second = paginatedTagMetadata(tag, 2);
+  assert.equal(second.alternates?.canonical, getAppBaseUrl() + "/tags/bverfgg?page=2");
+  assert.equal(second.openGraph?.url, getAppBaseUrl() + "/tags/bverfgg?page=2");
+  assert.equal(second.robots, undefined);
+
+  const src = fs.readFileSync(path.join(process.cwd(), "app/tags/[slug]/page.tsx"), "utf8");
+  assert.match(src, /getPaginatedTagBySlug\(slug, page, TAG_DETAIL_PAGE_SIZE\)/u);
+  assert.match(src, /getTagSummaryBySlug\(slug\)/u);
+  assert.match(src, /<ArticleGrid articles=\{result\.articles\}/u);
+  assert.match(src, /tagDetailPageHref\(result\.tag\.slug, target\)/u);
+  assert.match(src, /paginationWindow\(page, totalPages\)/u);
+  assert.match(src, /listTags\(\{ sort: "latest", minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT, limit: 9 \}\)/u);
 });
 
 test("Google and Naver ownership verification surfaces stay deployable on the Workers host", () => {

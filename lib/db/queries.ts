@@ -129,12 +129,24 @@ export async function listTags(options: TagListOptions = {}) {
   return referenceReads().listTags(options);
 }
 
-export async function getTagBySlug(slug: string) {
+export async function getTagSummaryBySlug(slug: string) {
   observePublicProjectionRead();
-  const tag = await referenceReads().getTagBySlug(slug);
+  return referenceReads().getTagBySlug(slug);
+}
+
+export async function getTagBySlug(slug: string) {
+  const tag = await getTagSummaryBySlug(slug);
   if (!tag) return null;
   const articles = await listArticles({ tag: slug, pageSize: 50 });
   return { tag, articles: articles.items };
+}
+
+/** Public tag-detail HTML only; the existing /api/tags/:slug response stays unchanged. */
+export async function getPaginatedTagBySlug(slug: string, page: number, pageSize = 10) {
+  const tag = await getTagSummaryBySlug(slug);
+  if (!tag) return null;
+  const result = await listArticles({ tag: slug, page, pageSize, count: "exact" });
+  return { tag, articles: result.items, pageInfo: result.pageInfo };
 }
 
 export async function listSources(): Promise<SourceRecord[]> {

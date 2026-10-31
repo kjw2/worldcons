@@ -9,13 +9,14 @@ import {
   getArticleSourceTextBySlug,
   getRelatedArticles,
   getTagBySlug,
+  getPaginatedTagBySlug,
+  getTagSummaryBySlug,
   listArticles,
   listArticlesForGlossaryTerm,
   listPublicSitemapArticles,
   listTopViewedArticles,
 } from "../lib/db/queries";
 import { mockArticles, mockTags } from "../lib/db/mock-data";
-import type { ArticleListItem } from "../lib/db/types";
 import { articleReads } from "../lib/article-reads";
 import { mockArticleReads } from "../lib/article-reads/mock-repository";
 import {
@@ -1122,6 +1123,26 @@ test("exported getTagBySlug composes the tag lookup with the tag article list", 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("tag detail page reads ten published articles per page without changing the API tag read", async () => {
+  await withSupabaseEnv({}, async () => {
+    const tag = await getTagSummaryBySlug("first-amendment");
+    assert.equal(tag?.slug, "first-amendment");
+    const page1 = await getPaginatedTagBySlug("first-amendment", 1, 10);
+    const page2 = await getPaginatedTagBySlug("first-amendment", 2, 10);
+    assert.ok(page1 && page2);
+    assert.equal(page1.pageInfo.pageSize, 10);
+    assert.equal(page1.pageInfo.total, 1);
+    assert.equal(page1.articles.length, 1);
+    assert.equal(page2.articles.length, 0);
+    assert.equal(page2.pageInfo.page, 2);
+    assert.equal(await getPaginatedTagBySlug("missing-tag", 1), null);
+    const legacy = await getTagBySlug("first-amendment");
+    assert.ok(legacy);
+    assert.deepEqual(legacy.articles.map((item) => item.slug), page1.articles.map((item) => item.slug));
+    assert.equal("pageInfo" in legacy, false, "API response shape remains unchanged");
+  });
 });
 
 test("listArticlesForGlossaryTerm expands, dedupes, sorts, and limits related-tag articles", async () => {
