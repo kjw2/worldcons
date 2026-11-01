@@ -40,7 +40,7 @@ import { handleBrowserNavigate } from "./browser-navigate";
 import { runNativeAdminJobDrain } from "./admin-job-drain";
 import { runNativeSourceCollection, NATIVE_CRAWLER_SOURCES } from "./native-crawler";
 import { runNativeSearchProjectionSync } from "./search-projection-sync";
-import { runCheckpointedSearchProjectionSync } from "./checkpointed-search-sync";
+import { runCheckpointedSearchProjectionSync, type SearchSyncCheckpointAdapter } from "./checkpointed-search-sync";
 import { needsSearchSyncAfterCrawler, needsSearchSyncAfterPublication } from "../../../lib/cloudflare/async-pipeline/search-sync-gate";
 import { hasPendingP3Publication } from "./publication-recovery";
 import { runD1CacheOutboxDrain } from "./cache-outbox-drain";
@@ -97,6 +97,20 @@ function gate(env: Env): M8RolloutGate {
   return resolveM8RolloutGate(env.M8_SCHEDULER_ENABLED === "true", env.M8_ENABLED_KINDS);
 }
 
+function searchSyncCheckpointAdapter(step: WorkflowStep): SearchSyncCheckpointAdapter {
+  return {
+    inventory: (name, run) => step.do(name, {
+      retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "2 minutes",
+    }, run),
+    managed: (name, run) => step.do(name, {
+      retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "5 minutes",
+    }, run),
+    terminal: (name, run) => step.do(name, {
+      retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
+    }, run),
+  };
+}
+
 export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessage> {
   async run(event: WorkflowEvent<M8TaskMessage>, step: WorkflowStep) {
     setRuntimeD1Bindings({
@@ -133,7 +147,7 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
       return runCheckpointedSearchProjectionSync({
         WORLDCONS_CORE: this.env.WORLDCONS_CORE,
         WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-      }, step, "native-search-projection-sync");
+      }, searchSyncCheckpointAdapter(step), "native-search-projection-sync");
     }
     if (event.payload.kind === "watchdog") {
       const watchdog = await executeM8TaskNative(this.env as unknown as M8NativeEnvironment, event.payload, step);
@@ -152,7 +166,7 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         searchProjection = await runCheckpointedSearchProjectionSync({
             WORLDCONS_CORE: this.env.WORLDCONS_CORE,
             WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-          }, step, "watchdog-sync-search-after-recovery");
+          }, searchSyncCheckpointAdapter(step), "watchdog-sync-search-after-recovery");
       }
       }
       const outbox = await step.do("watchdog-deliver-publication-cache-outbox", {
@@ -178,7 +192,7 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         ? await runCheckpointedSearchProjectionSync({
             WORLDCONS_CORE: this.env.WORLDCONS_CORE,
             WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-          }, step, "native-search-projection-sync-after-translation")
+          }, searchSyncCheckpointAdapter(step), "native-search-projection-sync-after-translation")
         : null;
       return { kind: event.payload.kind, translation, publication, searchProjection };
     }
@@ -192,7 +206,7 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         ? await runCheckpointedSearchProjectionSync({
             WORLDCONS_CORE: this.env.WORLDCONS_CORE,
             WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-          }, step, "native-search-projection-sync-after-publication")
+          }, searchSyncCheckpointAdapter(step), "native-search-projection-sync-after-publication")
         : null;
       return { kind: event.payload.kind, publication, searchProjection };
     }
@@ -218,7 +232,7 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         ? await runCheckpointedSearchProjectionSync({
             WORLDCONS_CORE: this.env.WORLDCONS_CORE,
             WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-          }, step, "native-search-projection-sync")
+          }, searchSyncCheckpointAdapter(step), "native-search-projection-sync")
         : null;
       const evidence = {
         effectiveSources: [...sourcePolicy.effective],

@@ -4,8 +4,7 @@ import {readFileSync} from 'node:fs';
 import {SqliteD1,articleId,publish} from './helpers/e2e-core-fixture';
 import {invalidateSearchMetadata,claimMetadataRepair,applyMetadataProjection,finishMetadataRepair,drainSearchMetadataRepairs} from '@/lib/cloudflare/search-projection/metadata-repair';
 import {syncSearchProjectionForArticle,runNativeSearchProjectionSync,applySearchProjectionPlan, listManagedSearchProjectionIds, syncManagedSearchProjectionBatch} from '@/lib/cloudflare/search-projection/d1-sync';
-import {runCheckpointedSearchProjectionSync} from '../workers/async-pipeline/src/checkpointed-search-sync';
-import type {WorkflowStep} from 'cloudflare:workers';
+import {runCheckpointedSearchProjectionSync,type SearchSyncCheckpointAdapter} from '../workers/async-pipeline/src/checkpointed-search-sync';
 import {planSearchProjectionFullRebuild} from '@/lib/cloudflare/search-projection/plan';
 import {assertPublicSearchFreshness,overlayPublicGenerationRows} from '@/lib/cloudflare/e2e/public-freshness';
 import {consumeSearchRepair} from '@/lib/cloudflare/e2e/search-repair-consumer';
@@ -39,9 +38,11 @@ test('checkpointed Workflow full sync persists protected batch and terminal reco
  await syncSearchProjectionForArticle(f.bindings,articleId);
  const approved=f.core.rows('search_metadata_repairs_v1')[0];
  const stepNames:string[]=[];
- const step={
-  async do<T>(name:string,_opts:unknown,cb:()=>Promise<T>):Promise<T>{stepNames.push(name);return cb();}
- } as WorkflowStep;
+ const step:SearchSyncCheckpointAdapter={
+  async inventory(name,cb){stepNames.push(name);return cb();},
+  async managed(name,cb){stepNames.push(name);return cb();},
+  async terminal(name,cb){stepNames.push(name);return cb();},
+ };
  const first=await runCheckpointedSearchProjectionSync(f.bindings,step,'test-full-sync');
  assert.equal(first.verified,true);
  assert.equal(first.managedChecked,1);
