@@ -1245,3 +1245,101 @@ actually downloads the current sitemap, investigate
 non-home URL discovery/indexing, and improve
 the observed 8–10 second sitemap TTFB without
 changing crawlable URL membership.
+
+## 2026-11-01: fast sitemap production rollout, parity and performance
+
+### Background and unchanged SEO authority
+
+- The live sitemap `app/sitemap.ts` is always dynamically generated
+  from Core D1, with publication eligibility and immutable metadata /
+  E2E generation guards enforced by `overlayPublicGenerationRows`.
+  Neither static caching nor bypassing approval checks was introduced.
+- `lib/article-reads/d1-repository.ts` already contained the
+  `fastSitemap` SQL candidate read. It replaces the repeated P3-head
+  and 80-ID article candidate fetches with a set-based JOIN, then
+  invokes **the same** sitemap-specific two-pass approval and
+  publishability overlay. The separate JSON guard flag remained true.
+- Previous isolated Workerd 2,239-entry, four-combination parity
+  and pending-metadata withholding tests had passed on 2026-10-31.
+  The attempted re-run of the heavy local matrix and later local
+  test/CLI processes on 2026-11-01 stalled in the Windows runtime.
+  They were **not** marked passing. This rollout instead used the
+  previously verified unchanged fast-path code and a guarded
+  live canary, with explicit version rollback ready.
+
+### Exact live before/after verification
+
+- 2026-11-01 production pre-canary sitemap baseline:
+  **3,637 URLs**, **2,307 article URLs**, **773,160 XML bytes**,
+  HTTP 200, two serial request TTFBs **5,149 / 4,832 ms**.
+  Source data legitimately increased from the prior day
+  (3,622 / 2,297) through daily ingestion.
+- Set only `WORLDCONS_FAST_SITEMAP_ENABLED=true` in
+  `wrangler.jsonc`. Because the Windows Wrangler CLI was stalled,
+  a Cloudflare Workers `secret_text` binding of the same name
+  was used to create the **same-code** canary Worker version
+  `dd8e1a6b-0ae7-4095-b5f5-0b3bf9e3363c`.
+  The tracked Wrangler config uses a normal plain-text flag;
+  future source deployments should converge this temporary
+  operational secret binding to a normal `vars` value.
+  No other script code, assets, queues, service bindings, D1 data
+  or public routes were changed.
+- The first live fast canary returned HTTP 200 with the same
+  3,637 URLs and 2,307 case URLs, and TTFB
+  **2,700 / 2,518 ms**, but the ad-hoc *raw XML* SHA and
+  an incorrectly written ad-hoc regex `lastmod` SHA differed.
+  The canary was **immediately rolled back** to known-good
+  `00792e11-e0b5-4032-87a5-5f28c41f4f62`.
+  Baseline raw SHA and URL/lastmod SHA returned exactly
+  to their previous values.
+- Captured actual 773,160-byte fast and slow XML response
+  snapshots (local temporary files only) using a second short
+  controlled canary, then rolled back again before comparison.
+  Parsing each `<url>...</url>` block independently showed
+  **0 slow-only URLs, 0 fast-only URLs, 0 changed lastmods,
+  and 0 XML content differences at the individual URL level**.
+  The **only** difference was the order of the URL entries.
+  The earlier ad-hoc regex had incorrectly crossed XML
+  `</url>` boundaries when an entry had no `lastmod`.
+  This was a **false-positive normalized-hash mismatch**,
+  not an eligibility or content regression.
+- Correctly sorting each URL with its own `lastmod` before
+  hashing yielded the **same SHA-256 in both modes**:
+  `cb600a672be2fd2419095c0ef6a133975b7c46eb01ae73f1a3da1595ab1667ef`.
+  Raw response SHA differs by design because URL ordering
+  differs; sitemap URL ordering is not an indexing authority.
+
+### Final rollout and smoke test
+
+- Re-enabled verified Worker version
+  **`dd8e1a6b-0ae7-4095-b5f5-0b3bf9e3363c`**
+  with **100% traffic**, keeping previous known-good
+  **`00792e11-e0b5-4032-87a5-5f28c41f4f62`**
+  available for rollback.
+- Three fresh production requests returned HTTP 200, each
+  with **3,637 total URLs, 2,307 article URLs, zero
+  duplicates**, 773,160 bytes, and the normalized SHA above
+  **exactly matching the saved slow baseline**. Their
+  TTFBs were **2,773 / 2,346 / 2,327 ms**.
+  Mean fast **2,482 ms** versus pre-rollout mean slow
+  **4,990.5 ms**: an observed **~50.3% reduction**
+  in this small sample, not a long-term P95 guarantee.
+- Live smoke: homepage, tag hub, tag-detail pages 1/2/8,
+  tag JSON API and robots.txt all returned HTTP 200.
+  Out-of-range `/tags/bverfgg?page=9` correctly returned
+  HTTP 404. The live tag-hub HTML remained 186,081 bytes,
+  and tag detail page 1 was 281,791 bytes.
+- Cloudflare showed only the new flag and existing
+  `WORLDCONS_SITEMAP_JSON_GUARD_BATCHING_ENABLED=true`,
+  with the same 4 D1, 1 Vectorize, 1 assets,
+  1 Durable Object and 1 R2 bindings. Querying
+  post-canary Worker observability returned
+  **zero observed HTTP 5xx** in the queried interval.
+- GSC read-only sitemap row remains stale:
+  `lastDownloaded=2026-10-19T23:08:57.582Z`
+  and errors/warnings 0. No Google submission,
+  OAuth refresh, browser, GitHub push/PR, or
+  manual production D1 mutation was performed.
+
+**P0 sitemap query optimization is LIVE and URL/lastmod-verified.**
+Google recrawl/indexing remains a separate unfinished P0.
