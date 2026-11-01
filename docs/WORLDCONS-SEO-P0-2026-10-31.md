@@ -1,5 +1,10 @@
 # WorldCons SEO P0 — 2026-10-31 live evidence and rollout gate
 
+**Engineering P0 closeout:** See
+[2026-11-01 technical completion and external GSC handoff](WORLDCONS-SEO-P0-CLOSEOUT-2026-11-01.md).
+Historical references to unfinished P0 work below describe the state
+at those earlier checkpoints, not the final engineering disposition.
+
 This continuation concerns URL discovery and Googlebot sitemap reliability.
 It supplements [the 2026-10-29/30 implementation record](WORLDCONS-SEO-P0-2026-10-29.md).
 Read-only diagnostics were run against the single newly reauthorized GSC

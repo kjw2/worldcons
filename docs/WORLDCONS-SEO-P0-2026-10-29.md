@@ -1,5 +1,10 @@
 # WorldCons SEO P0: Indexability Integrity
 
+**Final engineering status (2026-11-01): COMPLETE.** See
+[P0 technical closeout and the separate Google Search Console follow-up](WORLDCONS-SEO-P0-CLOSEOUT-2026-11-01.md).
+Historical pending observations below describe the state before the final
+remediation and production verification.
+
 - Date: 2026-10-29
 - Repository HEAD at implementation: `a99cd9f252f961292a0b275fe782a2a9a3568e82`
 - Scope: bounded P0 source fix plus local regression evidence
