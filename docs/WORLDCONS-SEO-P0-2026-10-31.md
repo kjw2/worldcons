@@ -1343,3 +1343,60 @@ changing crawlable URL membership.
 
 **P0 sitemap query optimization is LIVE and URL/lastmod-verified.**
 Google recrawl/indexing remains a separate unfinished P0.
+
+### 2026-11-01 afternoon independent post-rollout verification
+
+- Prior fast-sitemap configuration and operational notes were
+  preserved and committed as `88de9665e319c861ee9be818c58346abb62988d8`.
+  The deployed web Worker was **not rebuilt or redeployed** in
+  this verification. Cloudflare reported main `worldcons`
+  Worker `dd8e1a6b-0ae7-4095-b5f5-0b3bf9e3363c`
+  serving **100% traffic**. Its fast-sitemap flag
+  remains an operational `secret_text` binding; the
+  committed Wrangler file now includes the matching
+  plain-text `WORLDCONS_FAST_SITEMAP_ENABLED=true`
+  flag for future source deployments. Review this
+  binding-type transition before the next deploy.
+- A fresh read-only `pnpm seo:sitemap:probe`
+  passed **two consecutive HTTP 200 requests**:
+  **3,653 unique URLs / 2,317 article URLs / 3,579
+  lastmods / zero duplicates**; identical normalized
+  URL-and-lastmod SHA-256
+  `d352525499ecc1e2df19ca4b3f58026eddc13005fe0f3197ed940af21d7320e2`.
+  Measured TTFB: **3,106 and 2,801 ms**.
+  URL count increased from the morning 3,637/2,307
+  through ongoing ingestion; equal consecutive hashes
+  support current stability, not permanence.
+- Read-only HTTP crawl verification: `/robots.txt`
+  returned 200 and explicitly advertised
+  `Sitemap: https://worldcons.cclib.workers.dev/sitemap.xml`;
+  public pages are not excluded by robots rules.
+  Homepage 200 with **4 server-rendered article
+  links**, `/tags` 200 with **96 tag links**,
+  `/tags/bverfgg` 200 with **10 article links**,
+  and the representative French article, tag
+  detail and `/list` all 200 with correct absolute
+  self-canonical HTML. The article explicitly
+  emitted `robots: index, follow`; no
+  `X-Robots-Tag` blocking header observed.
+- Existing authorized GSC read-only inspection:
+  only the homepage was `Submitted and indexed`
+  (last crawled October 1). `/tags`,
+  `/tags/bverfgg`, `/list` and the representative
+  French article were all **`URL is unknown to Google`**.
+  The sitemap metadata still showed
+  `lastDownloaded=2026-10-19T23:08:57.582Z`,
+  **0 errors, 0 warnings**. Sitemap submitted/indexed
+  metadata is not a site-wide coverage measurement.
+  Do not infer a robots/meta noindex cause from
+  these results. No GSC write, reauthentication,
+  browser, GitHub push, PR or production D1 change.
+
+**Next independent P0:** establish that Google has
+actually re-downloaded the updated sitemap and
+discovered representative non-home URLs. Continue
+read-only GSC inspection until write scope is
+available or an authorized user manually submits
+the sitemap through Search Console. There is
+currently no proven technical crawling denial in
+the inspected HTML/robots responses.
