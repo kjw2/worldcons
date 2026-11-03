@@ -1,5 +1,7 @@
 # WorldCons SEO P0 — Technical Closeout (2026-11-01 KST)
 
+**Later external follow-up:** The prior GSC `gsc:write` blocker was resolved and sitemap submission succeeded on Nov 3, 2026. The newer GSC state and indexed-URL sample are tracked in [WorldCons GSC post-submission baseline (Nov 3)](WORLDCONS-GSC-POSTSUBMISSION-2026-11-03.md). Historical evidence below reflects the Nov 1 closeout and is not an assertion of today's GSC permissions.
+
 **Disposition: P0 engineering remediation COMPLETE.**
 
 This status closes the controllable P0 source, indexing-surface and
