@@ -5,14 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
-  BarChart3,
-  BookOpenCheck,
-  ClipboardList,
   ExternalLink,
   Home,
   KeyRound,
-  Link2,
-  ListChecks,
   LogOut,
   Menu,
   Newspaper,
@@ -30,22 +25,10 @@ interface AdminNavigationItem {
 }
 
 const primaryNavigation: AdminNavigationItem[] = [
-  { href: "/admin", label: "운영 개요", icon: Home, exact: true },
-  { href: "/admin/work", label: "통합 업무 큐", icon: ListChecks },
-];
-
-const contentNavigation: AdminNavigationItem[] = [
-  { href: "/admin/articles", label: "기사 관리", icon: Newspaper },
-  { href: "/admin/candidates", label: "URL 후보", icon: Link2 },
-  { href: "/admin/glossary-candidates", label: "용어 후보", icon: BookOpenCheck },
-];
-
-const systemNavigation: AdminNavigationItem[] = [
-  { href: "/admin/ops", label: "무인운영 현황", icon: Activity },
-  { href: "/admin/ingestion-runs", label: "수집 실행 기록", icon: ListChecks },
-  { href: "/admin/audit", label: "감사 로그", icon: ClipboardList },
-  { href: "/admin/llm", label: "LLM 설정", icon: KeyRound },
-  { href: "/admin/analytics", label: "이용 통계", icon: BarChart3 },
+  { href: "/admin", label: "대시보드", icon: Home, exact: true },
+  { href: "/admin/articles", label: "기사관리", icon: Newspaper },
+  { href: "/admin/ops", label: "수집현황", icon: Activity },
+  { href: "/admin/llm", label: "설정", icon: KeyRound },
 ];
 function isCurrent(pathname: string, item: AdminNavigationItem) {
   return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -92,11 +75,7 @@ function NavigationGroup({
 }
 function Navigation({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   return (
-    <div className="grid gap-6">
-      <NavigationGroup label="운영" items={primaryNavigation} pathname={pathname} onNavigate={onNavigate} />
-      <NavigationGroup label="콘텐츠" items={contentNavigation} pathname={pathname} onNavigate={onNavigate} />
-      <NavigationGroup label="시스템" items={systemNavigation} pathname={pathname} onNavigate={onNavigate} />
-    </div>
+    <NavigationGroup label="관리" items={primaryNavigation} pathname={pathname} onNavigate={onNavigate} />
   );
 }
 
@@ -106,7 +85,7 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileDialogRef = useRef<HTMLDivElement>(null);
   const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
-  const allNavigation = useMemo(() => [...primaryNavigation, ...contentNavigation, ...systemNavigation], []);
+  const allNavigation = useMemo(() => primaryNavigation, []);
   const location = useMemo(
     () => allNavigation.find((item) => isCurrent(pathname, item))?.label ?? "관리자",
     [allNavigation, pathname],

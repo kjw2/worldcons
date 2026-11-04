@@ -58,7 +58,7 @@ test("redesigned administrator UI is the only supported surface", () => {
   assert.equal(fs.existsSync(path.join(root, "components/admin-tabs.tsx")), false);
   assert.equal(fs.existsSync(path.join(root, "lib/admin/p4/flags.ts")), false);
   const page = source("app/admin/page.tsx");
-  assert.match(page, /return <AdminOperationsOverview/);
+  assert.match(page, /return <AdminSourceGrowthDashboard/);
   assert.doesNotMatch(page, /adminRedesignUiEnabled|getAdminDashboardData|AdminTabs/);
   assert.match(source("app/admin/operations/page.tsx"), /permanentRedirect\("\/admin"\)/);
   assert.match(source("app/admin/jobs/page.tsx"), /permanentRedirect\("\/admin\/work\?type=execution"\)/);
@@ -66,10 +66,11 @@ test("redesigned administrator UI is the only supported surface", () => {
 
 test("shell navigation covers the new admin surfaces without retired screen links", () => {
   const shell = source("components/admin-shell.tsx");
-  for (const href of [
-    "/admin", "/admin/work", "/admin/articles", "/admin/candidates",
-    "/admin/glossary-candidates", "/admin/ingestion-runs", "/admin/audit", "/admin/llm", "/admin/analytics",
-  ]) assert.match(shell, new RegExp(href.replaceAll("/", "\\/")));
+  for (const href of ["/admin", "/admin/articles", "/admin/ops", "/admin/llm"]) {
+    assert.match(shell, new RegExp(href.replaceAll("/", "\\/")));
+  }
+  for (const label of ["대시보드", "기사관리", "수집현황", "설정"]) assert.match(shell, new RegExp(label));
+  assert.doesNotMatch(shell, /href: "\/admin\/(?:work|candidates|glossary-candidates|ingestion-runs|audit|analytics)"/);
   assert.doesNotMatch(shell, /\/admin\/operations|\/admin\/jobs|\/admin\/governance|상태 및 거버넌스|Legacy triage|Legacy job queue/);
   assert.match(shell, /aria-current/);
   assert.match(shell, /관리자 본문으로 건너뛰기/);

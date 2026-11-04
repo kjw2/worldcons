@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { AdminOperationsOverview } from "@/components/admin-operations-overview";
-import { getAdminOperationsOverviewSnapshot } from "@/lib/admin/p4/overview";
+import { AdminSourceGrowthDashboard } from "@/components/admin-source-growth-dashboard";
+import { getAdminSourceGrowthSnapshot } from "@/lib/admin/source-growth";
 import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
@@ -11,5 +11,5 @@ export default async function AdminPage() {
     redirect(`/admin/login?next=${encodeURIComponent("/admin")}`);
   }
 
-  return <AdminOperationsOverview snapshot={await getAdminOperationsOverviewSnapshot()} />;
+  return <AdminSourceGrowthDashboard snapshot={await getAdminSourceGrowthSnapshot()} />;
 }
