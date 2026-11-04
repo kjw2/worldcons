@@ -17,6 +17,9 @@ export const metadata: Metadata = {
     template: `%s | ${SITE_NAME}`,
   },
   description: "세계 헌법재판기관의 최신 뉴스와 판례를 한국어 요약으로 탐색하는 큐레이션 플랫폼",
+  openGraph: {
+    siteName: SITE_NAME,
+  },
   alternates: {
     types: {
       "application/rss+xml": `${getAppBaseUrl()}/rss.xml`,

@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { SITE_NAME } from "../lib/site-brand";
 import { getAppBaseUrl, isIndexablePublicTag, publicAbsoluteUrl, publicPath } from "../lib/seo/public-urls";
 import { articleMetadata, siteVerificationMetadata, tagMetadata } from "../lib/seo/metadata";
-import { articleBreadcrumbJsonLd, articleJsonLd } from "../lib/seo/jsonld";
+import { articleBreadcrumbJsonLd, articleJsonLd, websiteJsonLd } from "../lib/seo/jsonld";
 import { publicListPaginationMetadata } from "../lib/seo/list-pagination";
 import { parseTagDetailPage, paginatedTagMetadata, TAG_DETAIL_PAGE_SIZE, tagDetailPageHref } from "../lib/seo/tag-detail-pagination";
 import { readTagDetailSafely, type TagDetailReadFailure } from "../lib/seo/tag-detail-read";
@@ -24,6 +25,59 @@ test("public paths strip the legacy /v2 prefix and keep clean URLs", () => {
   assert.equal(publicPath("/v2/list"), "/list");
   assert.equal(publicPath("/articles/example"), "/articles/example");
   assert.equal(publicAbsoluteUrl("/v2/articles/example"), `${getAppBaseUrl()}/articles/example`);
+});
+
+test("homepage alone emits the canonical WebSite identity and SEO surfaces share the site name", () => {
+  assert.deepEqual(websiteJsonLd(), {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_NAME,
+    alternateName: "WorldCons",
+    url: `${getAppBaseUrl()}/`,
+  });
+
+  const root = process.cwd();
+  const homepage = fs.readFileSync(path.join(root, "app/page.tsx"), "utf8");
+  const layout = fs.readFileSync(path.join(root, "app/layout.tsx"), "utf8");
+  const pageSources = fs.readdirSync(path.join(root, "app"), { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name === "page.tsx")
+    .map((entry) => path.join(entry.parentPath, entry.name));
+  const websiteSchemaPages = pageSources.filter((file) => /websiteJsonLd\(\)/u.test(fs.readFileSync(file, "utf8")));
+
+  assert.match(homepage, /jsonLdScriptValue\(websiteJsonLd\(\)\)/u);
+  assert.deepEqual(websiteSchemaPages, [path.join(root, "app/page.tsx")]);
+  assert.match(layout, /openGraph:\s*\{\s*siteName: SITE_NAME,/u);
+  assert.match(layout, /template: `%s \| \$\{SITE_NAME\}`/u);
+  assert.match(homepage, /title: "세계 헌법판례 데이터베이스"/u);
+  assert.match(homepage, /<h1[^>]*>세계 헌법판례 데이터베이스<\/h1>/u);
+
+  const article = {
+    slug: "site-name-article",
+    sourceKey: "de-bverfg",
+    jurisdiction: "Germany",
+    institutionName: "Bundesverfassungsgericht",
+    contentType: "decision" as const,
+    originalUrl: "https://example.test/decision",
+    canonicalUrl: "https://example.test/decision",
+    originalLanguage: "de",
+    originalTitle: "Original title",
+    koreanTitle: "한국어 제목",
+    originalPublishedAt: "2026-08-01T00:00:00.000Z",
+    discoveredAt: "2026-08-01T00:00:00.000Z",
+    fetchedAt: "2026-08-02T00:00:00.000Z",
+    summarizedAt: "2026-08-03T00:00:00.000Z",
+    status: "summarized" as const,
+    caseNumber: "1 BvR 1/26",
+    summaryJson: null,
+    tags: [],
+    sourceMetadata: null,
+    oneLineSummary: "고유한 판례 요약입니다.",
+    viewCount: 0,
+  };
+  const tag = { slug: "site-name-tag", name: "기본권", normalizedName: "기본권", type: "right" as const, articleCount: 3 };
+
+  assert.equal(articleMetadata(article).openGraph?.siteName, SITE_NAME);
+  assert.equal(tagMetadata(tag).openGraph?.siteName, SITE_NAME);
 });
 
 test("unfiltered archive pagination uses self-canonical pages while filter/search URLs stay noindex", () => {

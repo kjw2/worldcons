@@ -17,6 +17,7 @@ import { compareHomeCountries } from "@/lib/ui/home-country-order";
 import { displayJurisdictionFlag, displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { JUDICIAL_COMPLAINT_TAG_SLUG } from "@/lib/tags/judicial-complaint";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
+import { jsonLdScriptValue, websiteJsonLd } from "@/lib/seo/jsonld";
 import { articleCaseNumber } from "@/lib/ui/article-case-number";
 import { articleTitleForDisplay } from "@/lib/ui/article-title";
 
@@ -272,6 +273,7 @@ async function HomeContent() {
 export default function HomePage() {
   return (
     <PageShell className="public-archive-page max-w-[1248px] py-6 sm:py-8">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptValue(websiteJsonLd()) }} />
       <Suspense fallback={<HomeSkeleton />}><HomeContent /></Suspense>
     </PageShell>
   );

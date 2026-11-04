@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ArticleListItem, TagSummary } from "@/lib/db/types";
 import { isIndexablePublicTag, publicAbsoluteUrl } from "@/lib/seo/public-urls";
+import { SITE_NAME } from "@/lib/site-brand";
 
 export { getAppBaseUrl, isIndexablePublicTag, publicAbsoluteUrl, publicPath } from "@/lib/seo/public-urls";
 
@@ -35,6 +36,7 @@ export function articleMetadata(article: ArticleListItem): Metadata {
       description,
       url,
       type: "article",
+      siteName: SITE_NAME,
       publishedTime: article.originalPublishedAt ?? undefined,
     },
   };
@@ -58,6 +60,7 @@ export function tagMetadata(tag: TagSummary): Metadata {
       description,
       url,
       type: "website",
+      siteName: SITE_NAME,
     },
   };
 }

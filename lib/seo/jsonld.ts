@@ -3,6 +3,16 @@ import { SITE_NAME } from "@/lib/site-brand";
 import { getAppBaseUrl, publicAbsoluteUrl } from "@/lib/seo/metadata";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
 
+export function websiteJsonLd() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_NAME,
+    alternateName: "WorldCons",
+    url: publicAbsoluteUrl("/"),
+  };
+}
+
 export function articleJsonLd(article: ArticleDetail) {
   const originalUrl = safeExternalUrl(article.originalUrl);
   const url = publicAbsoluteUrl(`/articles/${article.slug}`);
