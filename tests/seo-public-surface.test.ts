@@ -8,6 +8,13 @@ import { articleMetadata, siteVerificationMetadata, tagMetadata } from "../lib/s
 import { articleBreadcrumbJsonLd, articleJsonLd, websiteJsonLd } from "../lib/seo/jsonld";
 import { publicListPaginationMetadata } from "../lib/seo/list-pagination";
 import { parseTagDetailPage, paginatedTagMetadata, TAG_DETAIL_PAGE_SIZE, tagDetailPageHref } from "../lib/seo/tag-detail-pagination";
+import {
+  isOutOfRangeSourceArchivePage,
+  parseSourceArchivePage,
+  sourceArchiveMetadata,
+  sourceArchivePageHref,
+  SOURCE_ARCHIVE_PAGE_SIZE,
+} from "../lib/seo/source-detail-pagination";
 import { readTagDetailSafely, type TagDetailReadFailure } from "../lib/seo/tag-detail-read";
 import { TAG_HUB_PAGE_SIZE, paginateTagHub, parseTagHubPage, tagHubMetadata, tagHubPageHref } from "../lib/seo/tag-hub-pagination";
 import {
@@ -198,6 +205,62 @@ test("tag detail paginates article cards without losing crawlable page identity"
   assert.match(src, /paginationWindow\(page, totalPages\)/u);
   assert.match(src, /listTags\(\{ sort: "latest", minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT, limit: 9 \}\)/u);
   assert.match(src, /readTagDetailSafely\("articles"/u);
+});
+
+test("source detail paginates its full public archive with self-canonical crawlable pages", () => {
+  assert.equal(SOURCE_ARCHIVE_PAGE_SIZE, 30);
+  assert.equal(parseSourceArchivePage(undefined), 1);
+  assert.equal(parseSourceArchivePage("2"), 2);
+  for (const bad of ["", "0", "01", "-1", "2.3", "10001", "Infinity"]) {
+    assert.equal(parseSourceArchivePage(bad), null);
+  }
+  assert.equal(parseSourceArchivePage(["2", "3"]), null);
+  assert.equal(sourceArchivePageHref("de-bverfg", 1), "/sources/de-bverfg");
+  assert.equal(sourceArchivePageHref("de-bverfg", 2), "/sources/de-bverfg?page=2");
+  assert.equal(isOutOfRangeSourceArchivePage(1, 0), false);
+  assert.equal(isOutOfRangeSourceArchivePage(2, 0), true);
+  assert.equal(isOutOfRangeSourceArchivePage(2, 1), false);
+
+  const source = {
+    sourceKey: "de-bverfg",
+    name: "Bundesverfassungsgericht",
+    jurisdiction: "Germany",
+    baseUrl: "https://example.test",
+    language: "de",
+    isActive: true,
+  };
+  const baseUrl = getAppBaseUrl();
+  assert.deepEqual(sourceArchiveMetadata(source, 1), {
+    title: "독일 연방헌재",
+    description: "독일 공식 헌법재판 자료 수집 기관",
+    alternates: { canonical: `${baseUrl}/sources/de-bverfg` },
+  });
+  const second = sourceArchiveMetadata(source, 2);
+  assert.equal(second.title, "독일 연방헌재 판례 목록 2페이지");
+  assert.match(String(second.description), /2페이지/u);
+  assert.equal(second.alternates?.canonical, `${baseUrl}/sources/de-bverfg?page=2`);
+  assert.equal(second.robots, undefined);
+  assert.deepEqual(sourceArchiveMetadata(source, null), {
+    alternates: { canonical: `${baseUrl}/sources/de-bverfg` },
+    robots: { index: false, follow: true },
+  });
+
+  const src = fs.readFileSync(path.join(process.cwd(), "app/sources/[sourceKey]/page.tsx"), "utf8");
+  assert.match(src, /export default async function SourceDetailPage/u);
+  assert.doesNotMatch(src, /^"use client"/mu);
+  assert.match(src, /listArticles\(\{ source: sourceKey, page, pageSize: SOURCE_ARCHIVE_PAGE_SIZE, count \}\)/u);
+  assert.match(src, /parseSourceArchivePage\(query\.page\)/u);
+  assert.match(src, /SOURCE_ARCHIVE_PAGE_SIZE/u);
+  assert.match(src, /page === 1 \? "exact" : "none"/u);
+  assert.match(src, /isOutOfRangeSourceArchivePage\(page, articles\.items\.length\)/u);
+  assert.match(src, /sourceArchivePageHref\(source\.sourceKey, page - 1\)/u);
+  assert.match(src, /sourceArchivePageHref\(source\.sourceKey, page \+ 1\)/u);
+  assert.match(src, /rel="prev"/u);
+  assert.match(src, /rel="next"/u);
+  assert.match(src, /<ArticleGrid articles=\{articles\.items\}/u);
+  assert.match(src, /`\/sources\/\$\{source\.sourceKey\}`/u);
+  assert.match(src, /\/list\?source=\$\{encodeURIComponent\(source\.sourceKey\)\}/u);
+  assert.doesNotMatch(src, /includeUnpublished/u);
 });
 
 test("tag detail retries transient read failures twice without logging sensitive messages or leaking content", async () => {
