@@ -123,3 +123,47 @@ test("M5 mismatched parent source cannot activate another country's snapshot",as
   await assert.rejects(captureDiscoverySnapshot(f.ingest,f.core,f.bucket,f.owner(context),{sourceKey:"es-tribunal-constitucional",candidates:[],recheckLimit:1,rangeDays:180}),/CHECK constraint/);
   assert.equal(f.ingest.rows("ingest_discovery_scans_v1").length,0);
 });
+
+test("ES published Core records missing the official decision date are prioritized for bounded recheck even inside the seven-day cooldown",async t=>{
+  const f=fixture(t),sourceKey="es-tribunal-constitucional" as const;
+  const url="https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32151";
+  const now=NOW;
+  const original=f.core.rows("articles")[0];
+  assert.ok(original);
+  f.core.db.prepare("UPDATE articles SET source_key=?,canonical_url=?,original_published_at=NULL,fetched_at=?,lifecycle_collection_state='source_text_ready' WHERE id=?")
+    .run(sourceKey,url,new Date(Date.parse(now)-60000).toISOString(),original.id);
+  await enqueueIngestStageDiscovery(f.ingest,f.bucket,{sourceKey,now});
+  const jobs=await claimIngestStageJobs(f.ingest,{stage:"discovery",workerId:"es-date-fixture",limit:1,leaseSeconds:300,now});
+  assert.equal(jobs.length,1);
+  const owner={jobId:jobs[0].id,fencingToken:jobs[0].claimed_fencing_token!,now};
+  const candidateEs:NativeStageCandidate={sourceKey,url,title:"SENTENCIA 67/2026",publishedAt:"2026-10-06T00:00:00.000Z",contentType:"decision",metadata:{}};
+  const snapshot=await captureDiscoverySnapshot(f.ingest,f.core,f.bucket,owner,{sourceKey,candidates:[candidateEs],recheckLimit:20,rangeDays:180});
+  assert.equal(snapshot.items.length,1);
+  assert.equal(snapshot.items[0].coveredExisting,false);
+  assert.equal(snapshot.items[0].priority,30);
+  assert.match(snapshot.items[0].sourceVersion,/:repair-date:2026-10-20$/);
+});
+
+test("ES scheduler bootstrap limit 1 does not restrict missing-date rechecks to one per day",async t=>{
+  const f=fixture(t),sourceKey="es-tribunal-constitucional" as const,url="https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32151";
+  const original=f.core.rows("articles")[0];
+  assert.ok(original);
+  f.core.db.prepare("UPDATE articles SET source_key=?,canonical_url=?,original_published_at=NULL,fetched_at=?,lifecycle_collection_state='source_text_ready' WHERE id=?")
+    .run(sourceKey,url,new Date(Date.parse(NOW)-60000).toISOString(),original.id);
+  await enqueueIngestStageDiscovery(f.ingest,f.bucket,{sourceKey,limit:1,now:NOW});
+  const [job]=await claimIngestStageJobs(f.ingest,{stage:"discovery",workerId:"es-repair-bootstrap",limit:1,leaseSeconds:300,now:NOW});
+  assert.ok(job);
+  const message=buildIngestStageQueueMessage({jobId:job.id,articleId:job.article_id,stage:job.stage,sourceVersion:job.source_version,contentHash:job.content_hash,fencingToken:job.claimed_fencing_token!,enqueuedAt:NOW});
+  const context={env:{},coreDb:f.core,ingestDb:f.ingest,message,job,now:NOW} as IngestStageHandlerContext;
+  const fetcher:typeof fetch=async input=>String(input).endsWith("robots.txt")?
+    new Response("User-agent: *\nAllow: /\nCrawl-delay: 0"):
+    new Response('<time>2026-10-06</time><a href="/HJ/es/Resolucion/Show/32151">SENTENCIA 67/2026</a>');
+  const handlers=createIngestStageHandlers({crawlerBindings:f.bindings,rawBucket:f.bucket,fetch:fetcher,now:()=>NOW,
+    e2e:{sources:[sourceKey],search:f.search,verification:{apiBaseUrl:"https://fixture.example/api",deploymentRef:"fixture:es-date"}}});
+  assert.equal((await handlers.discovery!(context)).status,"succeeded");
+  const snapshot=(await readDiscoverySnapshot(f.ingest,f.bucket,job.id))!;
+  const match=snapshot.items.find(item=>item.url===url);
+  assert.ok(match);
+  assert.equal(match.coveredExisting,false,"the 1-item bootstrap must not hide a missing official date");
+  assert.match(match.sourceVersion,/:repair-date:2026-10-20$/);
+});

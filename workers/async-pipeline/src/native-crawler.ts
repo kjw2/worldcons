@@ -9,6 +9,12 @@ import {
   isOfficialHost,
   verifyBverfgOfficialText as verifyBverfgOfficialTextShared,
 } from "../../../lib/ingest/official-source-verify";
+import {
+  normalizeSpainDateOnly,
+  validateSpainDecisionDate,
+  validateSpainOfficialDecisionDate,
+  type SpainOfficialDateValidation,
+} from "../../../lib/ingest/spain-decision-date";
 
 export const NATIVE_CRAWLER_SOURCES = [
   "de-bverfg",
@@ -122,13 +128,6 @@ function dateIso(value?: string) {
   const us = trimmed.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/);
   if (us) return `${us[3].length === 2 ? `20${us[3]}` : us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}T00:00:00.000Z`;
   return undefined;
-}
-
-function spainDateIso(value?: string) {
-  if (!value) return undefined;
-  const slash = value.trim().match(/\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/);
-  if (slash) return `${slash[3]}-${slash[2].padStart(2, "0")}-${slash[1].padStart(2, "0")}T00:00:00.000Z`;
-  return dateIso(value);
 }
 
 function withinRange(value: string | undefined, rangeStart: number) {
@@ -605,15 +604,32 @@ async function discoverSpainSearch(fetcher: typeof fetch, robotsCache: Map<strin
   return [...candidates.values()].slice(0, limit);
 }
 
-function spainPayloadCandidate(payload: Record<string, unknown>, hjId: number): NativeArticleCandidate | null {
-  const resolutionType = typeof payload.TIPO_RESOLUCION === "string" ? payload.TIPO_RESOLUCION.trim().toUpperCase() : "";
+function spainPayloadCandidate(
+  payload: Record<string, unknown>,
+  hjId: number,
+  evidence?: SpainOfficialDateValidation,
+): NativeArticleCandidate | null {
+  const dateValidation: SpainOfficialDateValidation = evidence
+    ?? { ...validateSpainDecisionDate(payload), dateBasis: "json_fecha_registro" };
+  const heading = dateValidation.heading;
+  const resolutionType = (typeof payload.TIPO_RESOLUCION === "string" ? payload.TIPO_RESOLUCION.trim().toUpperCase() : "")
+    || heading?.resolutionType
+    || "";
   if (!new Set(["SENTENCIA", "AUTO", "DECLARACION", "DECLARACIÓN"]).has(resolutionType)) return null;
-  const publishedAt = spainDateIso(typeof payload.FECHA_REGISTRO === "string" ? payload.FECHA_REGISTRO : undefined);
-  const number = payload.NUMERO_RESOLUCION === undefined || payload.NUMERO_RESOLUCION === null ? "" : String(payload.NUMERO_RESOLUCION);
-  const year = payload.ANNO_RESOLUCION === undefined || payload.ANNO_RESOLUCION === null ? "" : String(payload.ANNO_RESOLUCION);
+  const decisionDate = dateValidation.ok ? dateValidation.decisionDate : undefined;
+  const publishedAt = decisionDate ? `${decisionDate}T00:00:00.000Z` : undefined;
+  const number = payload.NUMERO_RESOLUCION === undefined || payload.NUMERO_RESOLUCION === null
+    ? (heading?.resolutionNumber ? String(heading.resolutionNumber) : "")
+    : String(payload.NUMERO_RESOLUCION);
+  const year = payload.ANNO_RESOLUCION === undefined || payload.ANNO_RESOLUCION === null
+    ? (heading?.resolutionYear ? String(heading.resolutionYear) : "")
+    : String(payload.ANNO_RESOLUCION);
   const title = `${resolutionType}${number ? ` ${number}${year ? `/${year}` : ""}` : ""}${publishedAt ? `, ${publishedAt.slice(0, 10)}` : ""}`;
   const irrelevant = payload.CONTENIDO_IRRELEVANTE_PARA_INTERNET === true
     || /no incorpora doctrina constitucional|no contiene doctrina constitucional/i.test(String(payload.AVISO ?? ""));
+  const reviewReason = !dateValidation.ok ? "date_validation_failed" : irrelevant ? "official_metadata_requires_review" : undefined;
+  const dateBasis = dateValidation.dateBasis === "detail_heading" ? "detail_heading" : "FECHA_REGISTRO";
+  const boeDate = dateValidation.boeDate ?? normalizeSpainDateOnly(payload.FECHA_BOE);
   return {
     sourceKey: "es-tribunal-constitucional",
     url: `${SOURCE_INFO["es-tribunal-constitucional"].baseUrl}/HJ/es/Resolucion/Show/${hjId}`,
@@ -625,7 +641,26 @@ function spainPayloadCandidate(payload: Record<string, unknown>, hjId: number): 
       caseNumber: number && year ? normalizeCaseNumber("es-tribunal-constitucional",`${number}/${year}`) : undefined,
       resolutionType,
       notice: typeof payload.AVISO === "string" ? payload.AVISO : undefined,
-      ...(irrelevant ? { review: { required: true, reason: "official_metadata_requires_review" } } : {}),
+      ...(decisionDate ? {
+        decisionDate,
+        officialDecisionDate: decisionDate,
+        dateBasis,
+        dateBasisLabel: dateBasis === "detail_heading"
+          ? "HJ official detail heading (decision date)"
+          : "HJ FECHA_REGISTRO (decision date)",
+        datePrecision: "date",
+        publishedAtSource: dateBasis,
+      } : {}),
+      ...(boeDate ? { boePublishedAt: `${boeDate}T00:00:00.000Z` } : {}),
+      ...(dateValidation.ecli ? { ecli: dateValidation.ecli } : {}),
+      dateValidation: {
+        ok: dateValidation.ok,
+        checks: dateValidation.checks,
+        warnings: dateValidation.warnings,
+        dateBasis,
+        ...(dateValidation.reason ? { reason: dateValidation.reason } : {}),
+      },
+      ...(reviewReason ? { review: { required: true, reason: reviewReason } } : {}),
       collection: {
         strategy: "api",
         confidence: "high",
@@ -685,6 +720,46 @@ async function fetchSpainJson(fetcher: typeof fetch, bindings: NativeCrawlerBind
   return null;
 }
 
+async function fetchSpainDetailHtml(fetcher: typeof fetch, bindings: NativeCrawlerBindings, robotsCache: Map<string, string>, lastRequest: Map<string, number>, hjId: number, browserNavigate?: CrawlerOptions["browserNavigate"]) {
+  const url = `${SOURCE_INFO["es-tribunal-constitucional"].baseUrl}/HJ/es/Resolucion/Show/${hjId}`;
+  await waitForSourcePermit("es-tribunal-constitucional", url, fetcher, robotsCache, lastRequest);
+  let response: Response | null = null;
+  try {
+    response = await boundedFetch(fetcher, url, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" }, redirect: "follow" });
+  } catch {
+    response = null;
+  }
+  if (response) {
+    if (!officialHost("es-tribunal-constitucional", response.url || url)) throw new Error("crawler.redirect_non_official_host");
+    if (response.ok) {
+      const html = await response.text().catch(() => "");
+      if (html.trim()) return html;
+    }
+  }
+  if (!browserNavigate) return null;
+  try {
+    const rendered = await browserNavigate({ url, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" });
+    if (!officialHost("es-tribunal-constitucional", rendered.finalUrl || url)) throw new Error("crawler.redirect_non_official_host");
+    return rendered.html;
+  } catch {
+    return null;
+  }
+}
+
+function spainDetailEvidence(payload: Record<string, unknown> | null, hjId: number, html: string): SpainOfficialDateValidation {
+  return validateSpainOfficialDecisionDate({
+    headingHtml: html,
+    payload: payload ?? {},
+    expected: {
+      resolutionType: payload?.TIPO_RESOLUCION,
+      resolutionNumber: payload?.NUMERO_RESOLUCION,
+      resolutionYear: payload?.ANNO_RESOLUCION,
+      hjId,
+      ecli: payload?.ECLI ?? payload?.ecli,
+    },
+  });
+}
+
 async function discoverSpainTail(bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, rangeStart: number, limit: number, browserNavigate?: CrawlerOptions["browserNavigate"]) {
   const row = await bindings.WORLDCONS_CORE.prepare("SELECT MAX(CAST(json_extract(source_metadata,'$.hjId') AS INTEGER)) AS max_hj_id FROM articles WHERE source_key='es-tribunal-constitucional'").first<{ max_hj_id: number | string | null }>();
   const maxId = Number(row?.max_hj_id ?? 0);
@@ -694,7 +769,14 @@ async function discoverSpainTail(bindings: NativeCrawlerBindings, fetcher: typeo
   for (let offset = 1; offset <= SPAIN_TAIL_PROBE_LIMIT && candidates.length < limit && empty < SPAIN_TAIL_EMPTY_STOP; offset += 1) {
     const hjId = Math.trunc(maxId) + offset;
     const payload = await fetchSpainJson(fetcher, bindings, robotsCache, lastRequest, hjId, browserNavigate).catch(() => null);
-    const candidate = payload ? spainPayloadCandidate(payload, hjId) : null;
+    let candidate = payload ? spainPayloadCandidate(payload, hjId) : null;
+    const dateOk = (candidate?.metadata.dateValidation as { ok?: boolean } | undefined)?.ok;
+    if (!candidate || !candidate.publishedAt || dateOk === false) {
+      const detailHtml = await fetchSpainDetailHtml(fetcher, bindings, robotsCache, lastRequest, hjId, browserNavigate).catch(() => null);
+      if (detailHtml) {
+        candidate = spainPayloadCandidate(payload ?? {}, hjId, spainDetailEvidence(payload, hjId, detailHtml));
+      }
+    }
     if (!candidate) {
       empty += 1;
       continue;
@@ -945,7 +1027,7 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
   const clean = normalizeNativeSourceText(text);
   const status = articleStatus(candidate, clean);
   const contentHash = await sha256(clean.replace(/\s+/g, " ").trim() || `${candidate.sourceKey}:${canonical}`);
-  const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state, summary_json, canonical_url, fetched_at, updated_at FROM articles WHERE (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) AND source_key=? ORDER BY created_at,id LIMIT 1").bind(canonical,candidate.sourceKey==="es-tribunal-constitucional"?canonical.replace("/HJ/es/","/es/"):canonical,canonical+"?",canonical.replace("/HJ/es/","/es/")+"?",candidate.sourceKey).first<Record<string, unknown>>();
+  const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state, summary_json, canonical_url, original_published_at, fetched_at, updated_at FROM articles WHERE (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) AND source_key=? ORDER BY created_at,id LIMIT 1").bind(canonical,candidate.sourceKey==="es-tribunal-constitucional"?canonical.replace("/HJ/es/","/es/"):canonical,canonical+"?",canonical.replace("/HJ/es/","/es/")+"?",candidate.sourceKey).first<Record<string, unknown>>();
   if(existing&&Date.parse(fetchedAt)<Date.parse(String(existing.fetched_at??"")))return {outcome:"preserved",articleId:String(existing.id),canonicalUrl:String(existing.canonical_url),contentHash:String(existing.content_hash),status:String(existing.status)};
   const preserved = async (): Promise<NativePersistResult> => {
     const row = await core.prepare("SELECT id,canonical_url,content_hash,status FROM articles WHERE id=?").bind(existing!.id).first<Record<string, unknown>>();
@@ -961,6 +1043,11 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
   const duplicate = existing ? null : await core.prepare("SELECT id FROM articles WHERE content_hash = ? LIMIT 1").bind(contentHash).first<{ id: string }>();
   if (duplicate) return { outcome: "duplicate", articleId: duplicate.id, canonicalUrl: canonical, contentHash, status };
   const oldMetadata = (() => { try { return JSON.parse(String(existing?.source_metadata ?? "{}")) as Record<string, unknown>; } catch { return {}; } })();
+  // A date-less refresh must never erase an existing source-backed decision date.
+  const existingPublishedAt = typeof existing?.original_published_at === "string" && existing.original_published_at.trim()
+    ? existing.original_published_at
+    : null;
+  const effectivePublishedAt = candidate.publishedAt ?? existingPublishedAt;
   // A transient PDF/robots/docket failure must not replace an earlier verified
   // SCOTUS original with the synthetic discovery title/URL fallback text.
   const previousPdf = oldMetadata.officialPdf as Record<string, unknown> | undefined;
@@ -1013,7 +1100,7 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
     if (!lifecycleBefore?.ok) throw new Error("crawler.lifecycle_read_failed");
     try {
       await core.batch([sourceCas(lifecycleBefore.data.revision), core.prepare("UPDATE articles SET original_url=?, original_title=?, original_published_at=?, fetched_at=?, source_metadata=?, updated_at=? WHERE id=?")
-        .bind(candidate.url, candidate.title, candidate.publishedAt ?? null, fetchedAt, data, fetchedAt, existing.id)]);
+        .bind(candidate.url, candidate.title, effectivePublishedAt, fetchedAt, data, fetchedAt, existing.id)]);
     } catch (error) {
       if (/malformed JSON|crawler_source_cas_failed/i.test(String(error))) return preserved();
       throw error;
@@ -1041,7 +1128,7 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
       translation_status=?,translation_started_at=NULL,translated_at=NULL,translation_provider=NULL,translation_model=NULL,translation_attempt_count=0,
       translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,
       cleaned_text=?, content_hash=?, source_metadata=?, raw_text_storage_ref=?, raw_text_blob_hash=?, raw_text_blob_size=?, raw_text_externalized_at=?, raw_text_blob_contract_version=?, review_state=?, updated_at=? WHERE id=?`)
-      .bind(candidate.url, candidate.title, candidate.publishedAt ?? null, fetchedAt, legacyStatus, translationStatus, clean, contentHash, data, rawRef, rawHash, String(rawBytes.byteLength), fetchedAt, "worldcons-article-raw-blob-v1", status === "needs_review" && existing.review_state !== "closed_private" ? "needs_triage" : existing.review_state ?? null, fetchedAt, existing.id);
+      .bind(candidate.url, candidate.title, effectivePublishedAt, fetchedAt, legacyStatus, translationStatus, clean, contentHash, data, rawRef, rawHash, String(rawBytes.byteLength), fetchedAt, "worldcons-article-raw-blob-v1", status === "needs_review" && existing.review_state !== "closed_private" ? "needs_triage" : existing.review_state ?? null, fetchedAt, existing.id);
     const after = await transitionArticleLifecycleInD1(core as unknown as D1RuntimeDatabase, {
         articleId: String(existing.id),
         expectedRevision: before.revision,
@@ -1231,23 +1318,41 @@ async function fetchCandidate(candidate: NativeArticleCandidate, bindings: Nativ
   }
   if (candidate.sourceKey === "es-tribunal-constitucional") {
     const jsonId = candidate.metadata.hjId;
+    const applyRefreshed = (refreshed: NativeArticleCandidate) => {
+      candidate.title = refreshed.title;
+      candidate.publishedAt = refreshed.publishedAt;
+      candidate.contentType = refreshed.contentType;
+      candidate.metadata = { ...candidate.metadata, ...refreshed.metadata };
+      if (!refreshed.publishedAt) {
+        // A failed date validation must never fall back to a listing date.
+        delete candidate.metadata.decisionDate;
+        delete candidate.metadata.officialDecisionDate;
+        delete candidate.metadata.publishedAtSource;
+      }
+    };
     if (typeof jsonId === "string" && /^\d+$/.test(jsonId)) {
       const payload = await fetchSpainJson(fetcher, bindings, robotsCache, lastRequest, Number(jsonId), browserNavigate);
       if (payload) {
-        const refreshed = spainPayloadCandidate(payload, Number(jsonId));
-        if (refreshed) {
-          candidate.title = refreshed.title;
-          candidate.publishedAt = refreshed.publishedAt ?? candidate.publishedAt;
-          candidate.contentType = refreshed.contentType;
-          candidate.metadata = { ...candidate.metadata, ...refreshed.metadata };
+        let refreshed = spainPayloadCandidate(payload, Number(jsonId));
+        const dateOk = (refreshed?.metadata.dateValidation as { ok?: boolean } | undefined)?.ok;
+        if (!refreshed || !refreshed.publishedAt || dateOk === false) {
+          // JSON succeeded but the decision date is missing/invalid. Fetch the
+          // authoritative official detail heading instead of guessing.
+          const detailHtml = await fetchSpainDetailHtml(fetcher, bindings, robotsCache, lastRequest, Number(jsonId), browserNavigate).catch(() => null);
+          if (detailHtml) {
+            refreshed = spainPayloadCandidate(payload, Number(jsonId), spainDetailEvidence(payload, Number(jsonId), detailHtml)) ?? refreshed;
+          }
         }
+        if (refreshed) applyRefreshed(refreshed);
         const text = spainPayloadText(payload);
         const irrelevant = payload.CONTENIDO_IRRELEVANTE_PARA_INTERNET === true
           || /no incorpora doctrina constitucional|no contiene doctrina constitucional/i.test(String(payload.AVISO ?? ""));
         const collection = candidate.metadata.collection as Record<string, unknown>;
         collection.sourceUrlVerified = true;
         collection.strictSourceTextAvailable = true;
-        if (irrelevant) {
+        const dateBlocked = (candidate.metadata.dateValidation as { ok?: boolean } | undefined)?.ok === false;
+        if (dateBlocked) candidate.metadata.review = { required: true, reason: "date_validation_failed" };
+        if (irrelevant && !dateBlocked) {
           candidate.metadata.review = { required: true, reason: "official_metadata_requires_review" };
           collection.sourceTextAvailable = false;
           collection.publishable = false;
@@ -1255,9 +1360,19 @@ async function fetchCandidate(candidate: NativeArticleCandidate, bindings: Nativ
         }
         const sufficient = text.length >= 2_000;
         collection.sourceTextAvailable = sufficient;
-        collection.publishable = sufficient;
-        if (!sufficient) candidate.metadata.review = { required: true, reason: "strict_source_text_gate_failed" };
+        collection.publishable = sufficient && !dateBlocked;
+        if (!sufficient && !dateBlocked) candidate.metadata.review = { required: true, reason: "strict_source_text_gate_failed" };
         return { text: sufficient ? text : `${candidate.title}\n${candidate.url}`, status: 200, fetched: true };
+      }
+    }
+    // JSON is unavailable: still recover the authoritative date from the detail
+    // heading so the existing NULL Core date can be repaired during ingestion.
+    if (typeof jsonId === "string" && /^\d+$/.test(jsonId)) {
+      const detailHtml = await fetchSpainDetailHtml(fetcher, bindings, robotsCache, lastRequest, Number(jsonId), browserNavigate).catch(() => null);
+      if (detailHtml) {
+        const evidence = spainDetailEvidence(null, Number(jsonId), detailHtml);
+        const dated = spainPayloadCandidate({}, Number(jsonId), evidence);
+        if (dated) applyRefreshed(dated);
       }
     }
     candidate.metadata.review = { required: true, reason: "official_json_unavailable" };

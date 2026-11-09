@@ -54,23 +54,32 @@ export async function captureDiscoverySnapshot(db:D1RuntimeDatabase,core:D1Runti
     for(let offset=0;offset<identified.length;offset+=40) {
       const chunk=identified.slice(offset,offset+40),marks=chunk.map(()=>"?").join(",");
       const aliases=[...new Set(chunk.flatMap(x=>[x.candidate.url,x.candidate.sourceKey==="es-tribunal-constitucional"?x.candidate.url.replace("/HJ/es/","/es/"):x.candidate.url]))];
-      for(const row of await e2eRows(core,"SELECT id,source_key,canonical_url,fetched_at,lifecycle_collection_state FROM articles WHERE canonical_url IN ("+aliases.map(()=>"?").join(",")+") ORDER BY created_at DESC,id DESC",...aliases))known.set(canonicalOfficialArticleUrl(String(row.source_key),String(row.canonical_url)),row);
+      for(const row of await e2eRows(core,`SELECT a.id,a.source_key,a.canonical_url,a.fetched_at,a.lifecycle_collection_state,a.original_published_at,
+        p.version_id AS published_version_id,v.original_published_at AS published_version_date
+        FROM articles a LEFT JOIN article_publications_p3 p ON p.article_id=a.id AND p.state='published'
+        LEFT JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=a.id
+        WHERE a.canonical_url IN (`+aliases.map(()=>"?").join(",")+`) ORDER BY a.created_at DESC,a.id DESC`,...aliases))known.set(canonicalOfficialArticleUrl(String(row.source_key),String(row.canonical_url)),row);
       const jobs=await e2eRows(db,"SELECT j.* FROM ingest_stage_jobs j WHERE j.stage='crawl' AND j.article_id IN ("+marks+") AND NOT EXISTS(SELECT 1 FROM ingest_stage_jobs newer WHERE newer.article_id=j.article_id AND newer.stage='crawl' AND (newer.created_at>j.created_at OR (newer.created_at=j.created_at AND newer.id>j.id)))",...chunk.map(x=>x.id));
       for(const row of jobs)latest.set(String(row.article_id),row);
     }
+    const needsSpainDateRecovery=(article:Record<string,unknown>|undefined)=>Boolean(article&&input.sourceKey==="es-tribunal-constitucional"
+      &&(article.original_published_at==null||(article.published_version_id!=null&&article.published_version_date==null)));
     const due=identified.filter(x=>{
       const article=known.get(x.candidate.url),job=latest.get(x.id);
       return article?.source_key===input.sourceKey&&article.lifecycle_collection_state==="source_text_ready"
-        &&(!job||job.status==="succeeded")&&Date.parse(String(job?.completed_at??article.fetched_at??"1970-01-01"))<Date.parse(owner.now)-7*86400000;
-    }).sort((a,b)=>String(latest.get(a.id)?.completed_at??known.get(a.candidate.url)?.fetched_at??"").localeCompare(String(latest.get(b.id)?.completed_at??known.get(b.candidate.url)?.fetched_at??""))||a.id.localeCompare(b.id));
+        &&(!job||job.status==="succeeded")&&(needsSpainDateRecovery(article)
+          ||Date.parse(String(job?.completed_at??article.fetched_at??"1970-01-01"))<Date.parse(owner.now)-7*86400000);
+    }).sort((a,b)=>Number(needsSpainDateRecovery(known.get(b.candidate.url)))-Number(needsSpainDateRecovery(known.get(a.candidate.url)))
+      ||String(latest.get(a.id)?.completed_at??known.get(a.candidate.url)?.fetched_at??"").localeCompare(String(latest.get(b.id)?.completed_at??known.get(b.candidate.url)?.fetched_at??""))
+      ||a.id.localeCompare(b.id));
     const rechecks=new Set(due.slice(0,Math.max(0,Math.min(input.recheckLimit,20))).map(x=>x.id));
     const items:Item[]=[];
     for(const {candidate,id} of identified) {
       const snapshotHash=await sha256Canonical(candidate),artifactRef="stages/ingest-discovery/"+input.sourceKey+"/"+snapshotHash+".json";
       const article=known.get(candidate.url),knownReady=article?.source_key===input.sourceKey&&article.lifecycle_collection_state==="source_text_ready";
       items.push({candidateId:id,candidate,url:candidate.url,snapshotHash,artifactRef,existingArticleId:article?.source_key===input.sourceKey?String(article.id):null,
-        coveredExisting:Boolean(knownReady)&&!rechecks.has(id),priority:article?0:50,
-        sourceVersion:"discovery-snapshot-v1:"+snapshotHash+(rechecks.has(id)?":recheck:"+owner.now.slice(0,10):"")});
+        coveredExisting:Boolean(knownReady)&&!rechecks.has(id),priority:article?(rechecks.has(id)&&needsSpainDateRecovery(article)?30:0):50,
+        sourceVersion:"discovery-snapshot-v1:"+snapshotHash+(rechecks.has(id)?(needsSpainDateRecovery(article)?":repair-date:":":recheck:")+owner.now.slice(0,10):"")});
     }
     const proposed:DiscoverySnapshot={schema:"worldcons.discovery-snapshot.v1",jobId:owner.jobId,sourceKey:input.sourceKey,observedAt:owner.now,
       scope:{rangeDays:input.rangeDays,countryCorpusComplete:false,window:"official listing; ES search at most four pages per type/year or bounded HJ tail; observed window only"},items};

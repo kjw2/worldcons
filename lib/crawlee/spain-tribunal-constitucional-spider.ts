@@ -8,6 +8,12 @@ import type { CrawlAttemptLog, CrawlerDiagnosticsCollector, CrawlerExecutionHook
 import { governedBufferedFetch } from "@/lib/crawler/request-governor";
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
 import { cleanText } from "@/lib/ingest/extract-text";
+import {
+  normalizeSpainDateOnly,
+  parseSpanishLongDateValue,
+  validateSpainOfficialDecisionDate,
+  type SpainDateCheck,
+} from "@/lib/ingest/spain-decision-date";
 import type { CrawleeSpiderItem, CrawleeSpiderOptions, CrawleeSpiderResult } from "@/lib/crawlee/types";
 import type { DiscoveredItem, RawArticle } from "@/lib/sources/types";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
@@ -80,13 +86,13 @@ interface SpainHjJson extends Record<string, unknown> {
 
 interface DateValidation {
   ok: boolean;
-  checks: Array<{
-    source: "FECHA_REGISTRO" | "FECHA_FIRMA" | "html_title_date";
-    value?: string;
-    matches?: boolean;
-  }>;
+  decisionDate?: string;
+  checks: SpainDateCheck[];
   warnings: string[];
   reason?: string;
+  dateBasis?: "detail_heading" | "FECHA_REGISTRO";
+  boeDate?: string;
+  ecli?: string;
 }
 
 interface SectionSnapshot {
@@ -104,6 +110,8 @@ interface BuildRawOptions {
   htmlTitleDate?: string;
   htmlTitle?: string;
   fallbackReason?: string;
+  /** Authoritative official `/Resolucion/Show/{id}` detail HTML. */
+  detailHeadingHtml?: string;
 }
 
 function envNumber(name: string, fallback: number) {
@@ -217,24 +225,7 @@ function dateOnlyFromDate(date: Date) {
 }
 
 export function normalizeSpainDecisionDate(value?: string | null) {
-  if (!value) return undefined;
-  const trimmed = String(value).trim();
-  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
-  if (iso) return validDateOnly(iso[1], iso[2], iso[3]);
-
-  const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T\s]+\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$/);
-  if (slash) return validDateOnly(slash[3], slash[2], slash[1]);
-  return undefined;
-}
-
-function validDateOnly(yearValue: string, monthValue: string, dayValue: string) {
-  const year = Number(yearValue);
-  const month = Number(monthValue);
-  const day = Number(dayValue);
-  if (!Number.isInteger(year) || year < 1900 || !Number.isInteger(month) || !Number.isInteger(day)) return undefined;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return undefined;
-  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return normalizeSpainDateOnly(value ?? undefined);
 }
 
 function dateOnlyToUtcIso(dateOnly?: string) {
@@ -262,36 +253,8 @@ function ddMmYyyy(dateOnly: string) {
   return `${day}/${month}/${year}`;
 }
 
-const SPANISH_MONTHS: Record<string, number> = {
-  enero: 1,
-  febrero: 2,
-  marzo: 3,
-  abril: 4,
-  mayo: 5,
-  junio: 6,
-  julio: 7,
-  agosto: 8,
-  septiembre: 9,
-  setiembre: 9,
-  octubre: 10,
-  noviembre: 11,
-  diciembre: 12,
-};
-
 export function parseSpanishLongDate(value?: string | null, fallbackYear?: number | string | null) {
-  if (!value) return undefined;
-  const normalized = value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  const match = normalized.match(/(?:^|\b)de\s+(\d{1,2})\s+de\s+([a-z]+)(?:\s+de\s+(\d{4}))?/);
-  if (!match) return undefined;
-  const month = SPANISH_MONTHS[match[2]];
-  const year = Number(match[3] ?? fallbackYear);
-  if (!month || !Number.isFinite(year) || year < 1900) return undefined;
-  return `${year}-${String(month).padStart(2, "0")}-${match[1].padStart(2, "0")}`;
+  return parseSpanishLongDateValue(value ?? undefined, fallbackYear ?? undefined);
 }
 
 function parseTitleDate(title?: string, fallbackYear?: number | string | null) {
@@ -420,20 +383,19 @@ function validateDecisionDate(payload: SpainHjJson, decisionDate?: string, htmlT
   const checks: DateValidation["checks"] = [{ source: "FECHA_REGISTRO", value: decisionDate, matches: Boolean(decisionDate) }];
   const warnings: string[] = [];
   if (!decisionDate) {
-    return { ok: false, checks, warnings, reason: "FECHA_REGISTRO is missing or not date-only parseable." };
+    return { ok: false, decisionDate: undefined, checks, warnings, dateBasis: "FECHA_REGISTRO", reason: "FECHA_REGISTRO is missing or not date-only parseable." };
   }
 
   const firmaDate = parseSpanishLongDate(payload.FECHA_FIRMA, payload.ANNO_RESOLUCION);
   if (firmaDate) {
     const matches = firmaDate === decisionDate;
     checks.push({ source: "FECHA_FIRMA", value: firmaDate, matches });
-    if (!matches) return { ok: false, checks, warnings, reason: "FECHA_FIRMA does not match FECHA_REGISTRO." };
+    if (!matches) return { ok: false, decisionDate: undefined, checks, warnings, dateBasis: "FECHA_REGISTRO", reason: "FECHA_FIRMA does not match FECHA_REGISTRO." };
   }
 
   if (htmlTitleDate) {
     const matches = htmlTitleDate === decisionDate;
     checks.push({ source: "html_title_date", value: htmlTitleDate, matches });
-    if (!firmaDate && !matches) return { ok: false, checks, warnings, reason: "HTML title decision date does not match FECHA_REGISTRO." };
     if (firmaDate && !matches) warnings.push("HTML title date does not match FECHA_REGISTRO.");
   }
 
@@ -446,8 +408,18 @@ function validateDecisionDate(payload: SpainHjJson, decisionDate?: string, htmlT
   if (ecliYear && ecliYear !== decisionDate.slice(0, 4)) {
     warnings.push("ECLI year does not match FECHA_REGISTRO year.");
   }
+  const boeDate = normalizeSpainDecisionDate(payload.FECHA_BOE);
+  if (boeDate) checks.push({ source: "BOE", value: boeDate, matches: boeDate >= decisionDate });
 
-  return { ok: true, checks, warnings };
+  return {
+    ok: true,
+    decisionDate,
+    checks,
+    warnings,
+    dateBasis: "FECHA_REGISTRO",
+    ...(boeDate ? { boeDate } : {}),
+    ...(ecli ? { ecli } : {}),
+  };
 }
 
 function sourceTextQuality(text: string, hasSubstantiveSection: boolean, canonicalUrl?: string) {
@@ -507,10 +479,40 @@ export function buildSpainTcRawArticleFromJson(payload: SpainHjJson, options: Bu
   const hjId = stringValue(payload.ID);
   if (!hjId) throw new Error("Spain HJ JSON is missing ID.");
   const canonicalUrl = canonicalSpainTcUrl(hjId);
-  const decisionDate = normalizeSpainDecisionDate(payload.FECHA_REGISTRO);
-  const boePublishedAt = normalizeSpainDecisionDate(payload.FECHA_BOE);
+  const jsonDecisionDate = normalizeSpainDecisionDate(payload.FECHA_REGISTRO);
   const htmlTitleDate = options.htmlTitleDate ?? parseTitleDate(options.htmlTitle, payload.ANNO_RESOLUCION);
-  const dateValidation = validateDecisionDate(payload, decisionDate, htmlTitleDate);
+  const { ecli: payloadEcli, derived } = ecliFor(payload);
+  const officialHeadingValidation = options.detailHeadingHtml
+    ? validateSpainOfficialDecisionDate({
+      headingHtml: options.detailHeadingHtml,
+      payload,
+      expected: {
+        resolutionType: payload.TIPO_RESOLUCION,
+        resolutionNumber: payload.NUMERO_RESOLUCION,
+        resolutionYear: payload.ANNO_RESOLUCION,
+        hjId,
+        ecli: payloadEcli,
+      },
+    })
+    : undefined;
+  const dateValidation: DateValidation = officialHeadingValidation
+    ? {
+      ok: officialHeadingValidation.ok,
+      ...(officialHeadingValidation.ok && officialHeadingValidation.decisionDate
+        ? { decisionDate: officialHeadingValidation.decisionDate }
+        : {}),
+      checks: officialHeadingValidation.checks,
+      warnings: officialHeadingValidation.warnings,
+      ...(officialHeadingValidation.reason ? { reason: officialHeadingValidation.reason } : {}),
+      dateBasis: "detail_heading",
+      ...(officialHeadingValidation.boeDate ? { boeDate: officialHeadingValidation.boeDate } : {}),
+      ...(officialHeadingValidation.ecli ? { ecli: officialHeadingValidation.ecli } : {}),
+    }
+    : validateDecisionDate(payload, jsonDecisionDate, htmlTitleDate);
+  const decisionDate = dateValidation.ok ? dateValidation.decisionDate : undefined;
+  const dateBasis = dateValidation.dateBasis ?? "FECHA_REGISTRO";
+  const ecli = dateValidation.ecli ?? payloadEcli;
+  const boePublishedAt = dateValidation.boeDate ?? normalizeSpainDecisionDate(payload.FECHA_BOE);
   const { text, sections, hasSubstantiveSection } = assembleSpainSourceText(payload);
   const cleanedText = cleanText(text);
   const quality = sourceTextQuality(text, hasSubstantiveSection, canonicalUrl);
@@ -519,15 +521,14 @@ export function buildSpainTcRawArticleFromJson(payload: SpainHjJson, options: Bu
   const referenceBoe = stringValue(payload.REFERENCIA_BOE);
   const fetchMethod = options.fetchMethod ?? "json_api";
   const parseConfidence = options.parseConfidence ?? "high";
-  const { ecli, derived } = ecliFor(payload);
   const contentIrrelevant = payload.CONTENIDO_IRRELEVANTE_PARA_INTERNET === true;
   const notice = stringValue(payload.AVISO);
   const expectedMetadataOnly = !quality.sourceTextAvailable && isSpainMetadataOnlyNotice(notice);
   const fallbackReview = fetchMethod !== "json_api";
   const reviewReason =
     options.fallbackReason ??
-    (contentIrrelevant ? "contenido_irrelevante_para_internet" : undefined) ??
     (!dateValidation.ok ? "date_validation_failed" : undefined) ??
+    (contentIrrelevant ? "contenido_irrelevante_para_internet" : undefined) ??
     (fallbackReview ? "fallback_parse" : undefined);
   const publishable = quality.sourceTextAvailable && !reviewReason;
 
@@ -539,13 +540,15 @@ export function buildSpainTcRawArticleFromJson(payload: SpainHjJson, options: Bu
     resolutionType,
     resolutionNumber: resolutionNumber(payload),
     resolutionYear: numberValue(payload.ANNO_RESOLUCION),
-    dateBasis: "FECHA_REGISTRO",
-    dateBasisLabel: "HJ FECHA_REGISTRO (decision date)",
+    dateBasis,
+    dateBasisLabel: dateBasis === "detail_heading"
+      ? "HJ official detail heading (decision date)"
+      : "HJ FECHA_REGISTRO (decision date)",
     datePrecision: "date",
-    decisionDate,
-    publishedAtSource: "FECHA_REGISTRO",
+    ...(decisionDate ? { decisionDate } : {}),
+    publishedAtSource: dateBasis,
     boeUsedForFiltering: false,
-    boePublishedAt,
+    ...(boePublishedAt ? { boePublishedAt } : {}),
     boeNumber: stringValue(payload.NUMERO_BOE),
     referenceBoe,
     boeUrl: boeUrl(referenceBoe),
@@ -678,18 +681,47 @@ export function buildSpainTcFallbackRawArticle(params: {
   decisionDate?: string;
   fetchMethod: "html_fallback" | "document_fallback";
   jsonApiError?: string;
+  detailHeadingHtml?: string;
 }): RawArticle {
   const canonicalUrl = canonicalSpainTcUrl(params.hjId);
   const cleaned = cleanText(params.text);
   const sourceTextAvailable = false;
   const parseConfidence: "medium" | "low" = params.fetchMethod === "html_fallback" ? "medium" : "low";
+  const headingValidation = params.detailHeadingHtml
+    ? validateSpainOfficialDecisionDate({ headingHtml: params.detailHeadingHtml, expected: { hjId: params.hjId } })
+    : undefined;
+  const dateValidation: DateValidation = headingValidation
+    ? {
+      ok: headingValidation.ok,
+      ...(headingValidation.ok && headingValidation.decisionDate ? { decisionDate: headingValidation.decisionDate } : {}),
+      checks: headingValidation.checks,
+      warnings: headingValidation.warnings,
+      ...(headingValidation.reason ? { reason: headingValidation.reason } : {}),
+      dateBasis: "detail_heading",
+      ...(headingValidation.boeDate ? { boeDate: headingValidation.boeDate } : {}),
+      ...(headingValidation.ecli ? { ecli: headingValidation.ecli } : {}),
+    }
+    : {
+      ok: Boolean(params.decisionDate),
+      ...(params.decisionDate ? { decisionDate: params.decisionDate } : {}),
+      checks: params.decisionDate ? [{ source: "html_title_date", value: params.decisionDate, matches: true }] : [],
+      warnings: [],
+      dateBasis: "FECHA_REGISTRO",
+    };
+  const decisionDate = dateValidation.ok ? dateValidation.decisionDate : undefined;
+  const dateBasis = dateValidation.dateBasis ?? "FECHA_REGISTRO";
   const metadataSeed = {
     hjId: params.hjId,
     externalId: `es-tc-hj-${params.hjId}`,
-    dateBasis: "FECHA_REGISTRO",
-    dateBasisLabel: "HJ FECHA_REGISTRO (decision date)",
+    dateBasis,
+    dateBasisLabel: dateBasis === "detail_heading"
+      ? "HJ official detail heading (decision date)"
+      : "HJ FECHA_REGISTRO (decision date)",
     datePrecision: "date",
-    decisionDate: params.decisionDate,
+    ...(decisionDate ? { decisionDate } : {}),
+    ...(dateValidation.boeDate ? { boePublishedAt: dateValidation.boeDate } : {}),
+    ...(dateValidation.ecli ? { ecli: dateValidation.ecli } : {}),
+    dateValidation,
     boeUsedForFiltering: false,
     sourceTextAvailable,
     fetchMethod: params.fetchMethod,
@@ -703,7 +735,7 @@ export function buildSpainTcFallbackRawArticle(params: {
     url: canonicalUrl,
     canonicalUrl: canonicalizeUrl(canonicalUrl),
     title: params.title ?? `Resolución HJ ${params.hjId}`,
-    publishedAt: dateOnlyToUtcIso(params.decisionDate),
+    publishedAt: dateOnlyToUtcIso(decisionDate),
     contentType: "decision",
     html: params.html,
     text: params.text,
@@ -775,6 +807,20 @@ async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCo
   throw new Error(lastError ?? `Spain HJ JSON API failed for ${hjId}`);
 }
 
+export async function fetchSpainDetailHeadingHtml(hjId: string, diagnostics?: CrawlerDiagnosticsCollector, hooks?: CrawlerExecutionHooks) {
+  const url = canonicalSpainTcUrl(hjId);
+  const response = await fetchWithTimeout(url, {
+    headers: {
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "es,en;q=0.8,ko;q=0.5",
+    },
+  }, hooks);
+  const html = await response.text();
+  await checkpointCrawlerExecution(hooks);
+  if (!response.ok) throw new Error(`Spain HJ detail heading fetch failed HTTP ${response.status}`);
+  return html;
+}
+
 async function fetchHtmlFallback(hjId: string, jsonApiError: string, diagnostics?: CrawlerDiagnosticsCollector, hooks?: CrawlerExecutionHooks) {
   const url = canonicalSpainTcUrl(hjId);
   const response = await fetchWithTimeout(url, {
@@ -803,7 +849,7 @@ async function fetchHtmlFallback(hjId: string, jsonApiError: string, diagnostics
 
   if (!response.ok) throw new Error(`Spain HJ HTML fallback failed HTTP ${response.status}`);
   const decisionDate = parseTitleDate(title);
-      return buildSpainTcFallbackRawArticle({
+  return buildSpainTcFallbackRawArticle({
     hjId,
     title,
     text: cleanedPageText,
@@ -811,6 +857,7 @@ async function fetchHtmlFallback(hjId: string, jsonApiError: string, diagnostics
     decisionDate,
     fetchMethod: "html_fallback",
     jsonApiError,
+    detailHeadingHtml: html,
   });
 }
 
@@ -857,7 +904,7 @@ async function fetchRawByHjId(
   await checkpointCrawlerExecution(options);
   try {
     const { payload, url } = await fetchJsonForHjId(hjId, options.diagnostics, options);
-    return buildSpainTcRawArticleFromJson({
+    const jsonRaw = buildSpainTcRawArticleFromJson({
       ...payload,
       ID: payload.ID ?? hjId,
     }, {
@@ -867,6 +914,27 @@ async function fetchRawByHjId(
       fetchMethod: "json_api",
       parseConfidence: "high",
     });
+    const jsonValidation = jsonRaw.metadata?.dateValidation as { ok?: boolean } | undefined;
+    if (jsonRaw.publishedAt && jsonValidation?.ok !== false) return jsonRaw;
+    // JSON succeeded but its decision date is missing/invalid/conflicting. The
+    // official detail heading is authoritative, so fetch it explicitly instead
+    // of only relying on the JSON-failure HTML fallback.
+    try {
+      const detailHeadingHtml = await fetchSpainDetailHeadingHtml(hjId, options.diagnostics, options);
+      return buildSpainTcRawArticleFromJson({
+        ...payload,
+        ID: payload.ID ?? hjId,
+      }, {
+        jsonApiUrl: url,
+        htmlTitle: options.listTitle,
+        htmlTitleDate: options.htmlTitleDate,
+        detailHeadingHtml,
+        fetchMethod: "json_api",
+        parseConfidence: "high",
+      });
+    } catch {
+      return jsonRaw;
+    }
   } catch (jsonError) {
     if (options.signal?.aborted) throw options.signal.reason;
     const jsonApiError = errorMessage(jsonError);
@@ -1306,9 +1374,32 @@ async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: Craw
       tailProbed += 1;
       try {
         const { payload, url } = await fetchJsonForHjId(hjId, diagnostics, options);
-        const decisionDate = normalizeSpainDecisionDate(payload.FECHA_REGISTRO);
+        const jsonDecisionDate = normalizeSpainDecisionDate(payload.FECHA_REGISTRO);
         const resolutionType = stringValue(payload.TIPO_RESOLUCION);
-        if (!decisionDate || !resolutionType) {
+        let detailHeadingHtml: string | undefined;
+        if (!jsonDecisionDate || !resolutionType) {
+          // Tail probes must not silently skip a real resolution only because the
+          // JSON date is missing/invalid; the official detail heading is authoritative.
+          try {
+            detailHeadingHtml = await fetchSpainDetailHeadingHtml(hjId, diagnostics, options);
+          } catch {
+            detailHeadingHtml = undefined;
+          }
+        }
+        const raw = buildSpainTcRawArticleFromJson({
+          ...payload,
+          ID: payload.ID ?? hjId,
+        }, {
+          jsonApiUrl: url,
+          fetchMethod: "json_api",
+          parseConfidence: "high",
+          ...(detailHeadingHtml ? { detailHeadingHtml } : {}),
+        });
+        const decisionDate = typeof raw.metadata?.decisionDate === "string"
+          ? raw.metadata.decisionDate
+          : normalizeSpainDecisionDate(raw.publishedAt);
+        const effectiveType = resolutionType ?? stringValue(raw.metadata?.resolutionType);
+        if (!decisionDate || !effectiveType) {
           emptyStreak += 1;
           continue;
         }
@@ -1317,14 +1408,6 @@ async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: Craw
         if (seen.has(hjId)) continue;
         seen.add(hjId);
         discoveredIds += 1;
-        const raw = buildSpainTcRawArticleFromJson({
-          ...payload,
-          ID: payload.ID ?? hjId,
-        }, {
-          jsonApiUrl: url,
-          fetchMethod: "json_api",
-          parseConfidence: "high",
-        });
         if (!isRawInRange(raw, from, to)) continue;
         if (raw.metadata?.review && typeof raw.metadata.review === "object") needsReview += 1;
         if (raw.metadata?.collection && typeof raw.metadata.collection === "object" && (raw.metadata.collection as { sourceTextAvailable?: unknown }).sourceTextAvailable !== true) {

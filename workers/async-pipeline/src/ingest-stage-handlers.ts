@@ -159,12 +159,18 @@ async function readJsonArtifact(bucket: IngestStageRawBucket, key: string): Prom
   }
 }
 
-function classifyCrawlFailure(error: unknown): { status: "retry" | "blocked"; errorCode: string; errorSummary: string } {
+function classifyCrawlFailure(error: unknown): { status: "retry" | "blocked"; errorCode: string; errorSummary: string; retryAfterSeconds?: number } {
   const message = error instanceof Error ? error.message : String(error);
   const summary = message.slice(0, 500);
   if (message === "crawler.robots_disallowed") return { status: "blocked", errorCode: "crawler.robots_disallowed", errorSummary: summary };
   if (message === "crawler.non_official_host" || message === "crawler.redirect_non_official_host") {
     return { status: "blocked", errorCode: message, errorSummary: summary };
+  }
+  // A final official 404/410 is not a transport failure. It is recorded as a
+  // separate unresolved-official-404 block so it cannot consume the automatic
+  // retry budget or be reported as a generic crawler failure.
+  if (message === "crawler.http_404" || message === "crawler.http_410") {
+    return { status: "blocked", errorCode: "crawler.official_404_unresolved", errorSummary: `Official source URL returned final ${message === "crawler.http_410" ? "HTTP 410" : "HTTP 404"}; no automatic retry.` };
   }
   if (/crawler\.http_429\b/.test(message)) return { status: "retry", errorCode: "crawler.http_429", errorSummary: summary };
   if (/crawler\.http_5\d\d\b/.test(message)) return { status: "retry", errorCode: message.slice(0, 120), errorSummary: summary };
@@ -690,7 +696,12 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
     const owner={jobId:context.job.id,fencingToken:context.message.fencingToken,now:context.now,clock};
     const capture=async(candidates:NativeStageCandidate[])=>{
       const snapshot=await captureDiscoverySnapshot(context.ingestDb,context.coreDb,deps.rawBucket,owner,
-        {sourceKey:request.sourceKey,candidates,recheckLimit:request.limit??1,
+        // The 1-item scheduler bootstrap limit controls discovery request size,
+        // not the independent protected ES date-repair recheck budget. The
+        // protected scanner retains all observed candidates and reserves only
+        // the bounded 20 verified missing-date cases; normal FR/DE budgets
+        // continue to honor the request limit.
+        {sourceKey:request.sourceKey,candidates,recheckLimit:request.sourceKey==="es-tribunal-constitucional"?20:(request.limit??1),
           rangeDays:request.sourceKey==="fr-conseil-constitutionnel"?Math.max(14,request.rangeDays??14):Math.min(730,Math.max(180,request.rangeDays??180))});
       return {status:"succeeded" as const,resultRef:"discovery-snapshot:"+snapshot.jobId+":"+snapshot.items.length,registerNext:false};
     };
@@ -756,13 +767,33 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
       const failure = classifyCrawlFailure(error);
       return { status: failure.status, errorCode: failure.errorCode, errorSummary: failure.errorSummary };
     }
-    // A transport failure or an unpublished/404 official URL stays a bounded
-    // retry candidate; it must never persist an empty record.
-    if (!result.fetched && (result.status === 0 || result.status === 404 || result.status >= 400)) {
+    // A final 404/410 is an unresolved official source, not a transient
+    // transport problem. Record it separately and stop automatic retries; a
+    // later discovery day or an operator redrive can re-evaluate the exact URL.
+    if (!result.fetched && (result.status === 404 || result.status === 410)) {
+      // The source adapter can report 404 after a transient 5xx on another
+      // official URL variant. Preserve that transient evidence and retry the
+      // record instead of recording a final unresolved 404.
+      if (result.candidate.metadata.fetchUnavailableCode === "BVERFG_OFFICIAL_TRANSIENT_5XX") {
+        return {
+          status: "retry",
+          errorCode: "crawler.source_unavailable_transport",
+          errorSummary: `Official ${candidate.sourceKey} URL variants returned a transient 5xx plus HTTP ${result.status}; bounded recheck scheduled.`,
+        };
+      }
+      return {
+        status: "blocked",
+        errorCode: "crawler.official_404_unresolved",
+        errorSummary: `Official ${candidate.sourceKey} URL returned final HTTP ${result.status}; no automatic retry. Keep the discovery candidate for a later official-publication recheck or operator redrive (${candidate.url.slice(0, 240)}).`,
+      };
+    }
+    // Transport/status-unavailable remains recoverable, but only under the
+    // durable attempt budget and the consumer's bounded exponential backoff.
+    if (!result.fetched && (result.status === 0 || result.status >= 400)) {
       return {
         status: "retry",
         errorCode: `crawler.source_unavailable_${result.status || "transport"}`,
-        errorSummary: `Official source text unavailable (status ${result.status}); keep the discovery candidate for bounded recheck.`,
+        errorSummary: `Official ${candidate.sourceKey} source text unavailable (status ${result.status || "transport"}); bounded recheck scheduled.`,
       };
     }
     const contentHash = await sha256Hex(result.text);
@@ -1024,8 +1055,15 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         if (payload?.articleId!==context.job.article_id||!payload.generation) throw new Error("e2e.staged_generation_missing");
         const result=await finishStagedSearch(context.coreDb,deps.e2e,payload.generation as E2EGenerationReceipt);
         if (result.status==="completed_verified"||result.status==="already_verified") return {status:"succeeded",resultRef:`generation:${(payload.generation as E2EGenerationReceipt).generationId}`};
-        return {status:["dead_letter","blocked","superseded","withdrawal_verified"].includes(result.status)?"blocked":"retry",errorCode:`e2e.staged_${result.status}`};
-      } catch {return {status:"retry",errorCode:"e2e.staged_search_verification_failed"};}
+        // A terminal Core verification already recorded the exact reason (API
+        // outage, identity/content drift, budget exhaustion). Preserve that
+        // source-specific code instead of collapsing it into one generic
+        // `e2e.staged_dead_letter`, and never auto-retry a terminal verification.
+        const verificationCode="errorCode" in result&&typeof result.errorCode==="string"&&result.errorCode?result.errorCode:`e2e.staged_${result.status}`;
+        const blocked=["dead_letter","blocked","superseded","withdrawal_verified"].includes(result.status);
+        return {status:blocked?"blocked":"retry",errorCode:verificationCode,
+          errorSummary:blocked?"Core search verification is terminal. Inspect the recorded verification error; use the audited verification redrive before redriving this stage job.":null};
+      } catch (error) {return {status:"retry",errorCode:"e2e.staged_search_verification_failed",errorSummary:error instanceof Error?error.message.slice(0,500):null};}
     }
     // Defense in depth: a US search projection must independently satisfy the
     // manual-approval guard even if it somehow bypassed public-judgment/publish.
