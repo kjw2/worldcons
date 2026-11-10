@@ -17,6 +17,29 @@ export interface ArticlePublicationSnapshot {
   legacyUpdatedAt: string;
 }
 
+export interface SpainDateOnlyCorrectionInput {
+  /** The currently published immutable version whose date is repaired. */
+  previousVersionId: string;
+  correctedOriginalPublishedAt: string;
+  decisionDate: string;
+  evidenceSha256: string;
+  hjId: string;
+  officialSourceUrl: string;
+  rawFechaRegistro?: string | null;
+  headingIdentifier: string;
+  resolutionType: string;
+  resolutionNumber: number;
+  resolutionYear: number;
+  ecli?: string | null;
+  boeDate?: string | null;
+  evidenceBasis: "detail_heading" | "json_fecha_registro";
+  /** Managed rows bind to the recorded generation owner; legacy rows need an operator receipt. */
+  authorizationBasis: "managed_generation" | "operator_authorization";
+  operatorActorId?: string | null;
+  operatorApprovedAt?: string | null;
+  correlationId: string;
+}
+
 export interface ArticlePublicationTransitionInput {
   articleId: string;
   expectedVersionRevision: number;
@@ -25,6 +48,8 @@ export interface ArticlePublicationTransitionInput {
   targetState: ArticlePublicationState;
   versionId?: string | null;
   captureLegacy?: boolean;
+  /** Bounded, official-evidence-only date republish; never changes any other immutable field. */
+  officialDateOnlyCorrection?: SpainDateOnlyCorrectionInput;
   /** Internal integrity repair of an already approved current snapshot. */
   repairProjection?: boolean;
   actorType: ArticlePublicationActor;

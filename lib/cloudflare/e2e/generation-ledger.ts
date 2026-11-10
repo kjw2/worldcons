@@ -6,7 +6,7 @@ import type { ArticlePublicationTransitionInput } from "@/lib/article-publicatio
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
 import { SEARCH_PROJECTION_VERSION } from "@/lib/cloudflare/search-projection/types";
 import { FTS_INPUT_VERSION, GENERATION_HASH_SCHEMA, PROJECTION_INPUT_SCHEMA,
-  approvalContextDocument, approvalIdentity, approvalHashSchema, sha256Canonical, STAGED_APPROVAL_POLICY, HUMAN_APPROVAL_POLICY, REMOVAL_AUTHORITY_POLICY, type E2EGenerationReceipt } from "./contracts";
+  approvalContextDocument, approvalIdentity, approvalHashSchema, sha256Canonical, STAGED_APPROVAL_POLICY, HUMAN_APPROVAL_POLICY, REMOVAL_AUTHORITY_POLICY, OFFICIAL_DATE_ONLY_POLICY, type E2EGenerationReceipt } from "./contracts";
 
 type Row = Record<string, unknown>;
 async function read(binding: D1RuntimeDatabase, sql: string, ...values: unknown[]): Promise<Row | null> {
@@ -90,7 +90,7 @@ export async function prepareGenerationCommit(binding: D1RuntimeDatabase, input:
   values.push(input.articleId, previous ? JSON.stringify([previous.generation_id,previous.generation_seq]) : "null");
   predicates.push(`(${TAG_SNAPSHOT_SQL.replace(' AS snapshot','')})=?`);
   values.push(input.articleId, tagSnapshot);
-  if ([STAGED_APPROVAL_POLICY,HUMAN_APPROVAL_POLICY,REMOVAL_AUTHORITY_POLICY].includes(approval.policyVersion)) {
+  if ([STAGED_APPROVAL_POLICY,HUMAN_APPROVAL_POLICY,REMOVAL_AUTHORITY_POLICY,OFFICIAL_DATE_ONLY_POLICY].includes(approval.policyVersion)) {
     predicates.push(`EXISTS (SELECT 1 FROM e2e_approval_evidence_v1 WHERE approval_key=? AND article_id=?
       AND approval_snapshot_hash=? AND source_content_hash=? AND policy_version=? AND evidence_ref=?
       AND source_artifact_ref=? AND pipeline_run_id=? AND discovery_candidate_id=?)`);

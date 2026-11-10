@@ -9,6 +9,8 @@ export const FTS_INPUT_VERSION = 1;
 export const HUMAN_APPROVAL_POLICY = "worldcons.human-reviewed-publication.v1";
 export const REMOVAL_AUTHORITY_POLICY = "worldcons.private-transition.v1";
 export const STAGED_APPROVAL_POLICY = "worldcons.fr-es-staged-approval.v1";
+/** Narrow automatic policy: only an official date changes on an otherwise identical immutable snapshot. */
+export const OFFICIAL_DATE_ONLY_POLICY = "worldcons.official-date-only-correction.v1";
 
 /** Explicit opt-in. Evidence is supplied by the approval owner, not invented here. */
 export interface E2EApprovalContext {

@@ -3,7 +3,7 @@ import { allPredicates } from "./sql-predicates";
 import type { D1RuntimeDatabase } from "../d1/runtime-binding";
 import { canonicalJson } from "@/lib/backfill/canonical-json";
 import { canonicalArticleCaseNumber, normalizeCaseNumber } from "@/lib/search/case-number";
-import { approvalIdentity, sha256Canonical, HUMAN_APPROVAL_POLICY, REMOVAL_AUTHORITY_POLICY, STAGED_APPROVAL_POLICY } from "./contracts";
+import { approvalIdentity, sha256Canonical, HUMAN_APPROVAL_POLICY, OFFICIAL_DATE_ONLY_POLICY, REMOVAL_AUTHORITY_POLICY, STAGED_APPROVAL_POLICY } from "./contracts";
 import { currentGenerations, e2eRows, type GenerationRow } from "./generation-state";
 import { desiredSearchProjection } from "./search-repair-consumer";
 import { projectionFingerprints, projectionMatches, inspectSearchProjection, searchIdentity } from "./search-generation-guard";
@@ -74,13 +74,13 @@ export async function verifySearchRepair(core:D1RuntimeDatabase,search:D1Runtime
   if (!g||g.generation_id!==row.generation_id||row.status==="superseded") return {status:"superseded"} as const;
   if (!g.input_current) return {status:"blocked"} as const;
   if (row.status==="verified") return {status:"already_verified"} as const;
-  if (row.status==="dead_letter") return {status:"dead_letter"} as const;
+  if (row.status==="dead_letter") return {status:"dead_letter",errorCode:typeof row.last_error_code==="string"&&row.last_error_code?row.last_error_code:"e2e.staged_dead_letter"} as const;
   const receipt=(await e2eRows(core,"SELECT * FROM e2e_search_apply_receipts_v1 WHERE generation_id=?",g.generation_id))[0];
   if (!receipt||Number(receipt.fencing_token)!==Number(row.fencing_token)||row.status==="leased") return {status:"awaiting_application"} as const;
   await e2eRows(core,`INSERT INTO e2e_verification_jobs_v1 (generation_id,next_attempt_at,updated_at)
     VALUES (?,?,?) ON CONFLICT(generation_id) DO NOTHING`,g.generation_id,now,now);
   const job=(await e2eRows(core,"SELECT * FROM e2e_verification_jobs_v1 WHERE generation_id=?",g.generation_id))[0];
-  if (["dead_letter","blocked"].includes(String(job.status))) return {status:"dead_letter"} as const;
+  if (["dead_letter","blocked"].includes(String(job.status))) return {status:"dead_letter",errorCode:typeof job.last_error_code==="string"&&job.last_error_code?job.last_error_code:"e2e.staged_dead_letter"} as const;
   if (job.status==="leased"&&String(job.lease_expires_at)>now||String(job.next_attempt_at)>now) return {status:"retry"} as const;
   const current=`EXISTS (SELECT 1 FROM e2e_search_repair_outbox_v1 o
     JOIN e2e_search_apply_receipts_v1 r ON r.generation_id=o.generation_id
@@ -114,7 +114,7 @@ export async function verifySearchRepair(core:D1RuntimeDatabase,search:D1Runtime
     const ended=await settleFailure(now,"e2e.verification_budget_exhausted",true,now,
       `j.generation_id=? AND j.verification_fence=? AND (j.status IN ('pending','retry_wait')
         OR (j.status='leased' AND j.lease_expires_at<=?)) AND ${current}`,[g.generation_id,job.verification_fence,now,...currentValues]);
-    return {status:ended?"dead_letter":"retry"} as const;
+    return ended?{status:"dead_letter",errorCode:"e2e.verification_budget_exhausted"} as const:{status:"retry"} as const;
   }
   const claimed=(await e2eRows(core,`UPDATE e2e_verification_jobs_v1 AS j SET status='leased',claimed_by=?,lease_expires_at=?,
     verification_fence=verification_fence+1,applied_fence=?,attempt_count=attempt_count+1,updated_at=?
@@ -150,7 +150,14 @@ export async function verifySearchRepair(core:D1RuntimeDatabase,search:D1Runtime
       &&["reviewedExactSnapshot","officialHost","publicPermission","summarySchema","riskFlagsAcknowledged"].every(key=>checks[key]===true);
     const removal=proof.schema==="worldcons.removal-authority.v1"&&g.policy_version===REMOVAL_AUTHORITY_POLICY&&g.expected_publication_state!=="published"
       &&proof.noPublicApproval===true&&proof.targetState===g.expected_publication_state&&checks.exactSnapshot===true&&checks.removalOnly===true;
-    if(!automatic&&!human&&!removal)throw new Error("e2e.approval_evidence_mismatch");
+    const dateOnly=proof.schema==="worldcons.official-date-only-approval.v1"&&g.policy_version===OFFICIAL_DATE_ONLY_POLICY
+      &&g.approval_mode==="automatic"&&g.expected_publication_state==="published"
+      &&proof.correctedOriginalPublishedAt===version.original_published_at
+      &&proof.evidenceBasis==="detail_heading"&&proof.evidenceSha256===approval.source_artifact_hash
+      &&checks.dateOnlyChange===true&&checks.officialHeadingIdentity===true&&checks.officialDateMatches===true
+      &&checks.boeDistinct===true&&checks.sourceContentUnchanged===true
+      &&(proof.authorizationBasis==="managed_generation"?checks.previousApprovalBound===true:checks.operatorAuthorized===true);
+    if(!automatic&&!human&&!removal&&!dateOnly)throw new Error("e2e.approval_evidence_mismatch");
     if((human||removal)&&(await sha256Canonical(proof.sourceArtifact)!==approval.source_artifact_hash
       ||record(proof.sourceArtifact).cleanedText!==version.cleaned_text||record(proof.sourceArtifact).canonicalUrl!==version.canonical_url))throw new Error("e2e.approval_evidence_mismatch");
     const projection=await desiredSearchProjection(core,g),fingerprints=await projectionFingerprints(projection.document,projection.fts);

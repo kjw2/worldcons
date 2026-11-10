@@ -1,6 +1,17 @@
 import {protectedSourceRequired,recordRemovalAuthority} from "../e2e/manual-approval";
-import {HUMAN_APPROVAL_POLICY,REMOVAL_AUTHORITY_POLICY,STAGED_APPROVAL_POLICY} from "../e2e/contracts";
+import {HUMAN_APPROVAL_POLICY,OFFICIAL_DATE_ONLY_POLICY,REMOVAL_AUTHORITY_POLICY,STAGED_APPROVAL_POLICY} from "../e2e/contracts";
 import { hasE2ETable } from "@/lib/cloudflare/e2e/generation-state";
+import {
+  assertSpainDateOnlyAuthorization,
+  buildSpainDateOnlyApprovalEvidence,
+  spainDateOnlyContentHash,
+  spainDateOnlyDateOnly,
+  spainDateOnlyEvidenceInsert,
+  spainDateOnlyVersionId,
+  validateSpainDateOnlyEvidence,
+  type SpainDateOnlyApprovalEvidence,
+} from "@/lib/ingest/spain-date-only-republication";
+import type { SpainOfficialDateEvidence } from "@/lib/ingest/spain-decision-date-recovery";
 import { approvalIdentity, approvalHashSchema, validE2EApproval } from "@/lib/cloudflare/e2e/contracts";
 import { prepareGenerationCommit, readGenerationReplay } from "@/lib/cloudflare/e2e/generation-ledger";
 import { articleLifecycleError } from "@/lib/article-lifecycle/errors";
@@ -531,6 +542,8 @@ export async function transitionArticlePublicationInD1(
 ): Promise<ArticlePublicationResult<ArticlePublicationTransitionResult>> {
   try {
     if(input.e2eApproval!==undefined&&!validE2EApproval(input.e2eApproval))return {ok:false,error:articlePublicationError("invalid_input")};
+    if(input.officialDateOnlyCorrection&&input.e2eApproval?.policyVersion===OFFICIAL_DATE_ONLY_POLICY)return {ok:false,error:articlePublicationError("invalid_input")};
+    if(input.e2eApproval?.policyVersion===OFFICIAL_DATE_ONLY_POLICY&&!input.officialDateOnlyCorrection)return {ok:false,error:articlePublicationError("invalid_input")};
     const protectedSource=await protectedSourceRequired(binding,input.articleId);
     const sourceRule=await hasE2ETable(binding,"e2e_source_policies_v1")?
       await one<Row>(binding,"SELECT p.required FROM articles a JOIN e2e_source_policies_v1 p ON p.source_key=a.source_key WHERE a.id=?",[input.articleId]):null;
@@ -539,9 +552,9 @@ export async function transitionArticlePublicationInD1(
     if(input.e2eApproval&&((input.e2eApproval.policyVersion===HUMAN_APPROVAL_POLICY&&input.e2eApproval.mode!=="human")
       ||([STAGED_APPROVAL_POLICY,REMOVAL_AUTHORITY_POLICY].includes(input.e2eApproval.policyVersion)&&input.e2eApproval.mode!=="automatic")))return {ok:false,error:articlePublicationError("invalid_input")};
     if(input.e2eApproval?.policyVersion===REMOVAL_AUTHORITY_POLICY&&input.targetState==="published")return {ok:false,error:articlePublicationError("ineligible")};
-    if(Number(sourceRule?.required)===1&&input.e2eApproval&&![STAGED_APPROVAL_POLICY,HUMAN_APPROVAL_POLICY,REMOVAL_AUTHORITY_POLICY].includes(input.e2eApproval.policyVersion))return {ok:false,error:articlePublicationError("ineligible")};
+    if(Number(sourceRule?.required)===1&&input.e2eApproval&&![STAGED_APPROVAL_POLICY,HUMAN_APPROVAL_POLICY,REMOVAL_AUTHORITY_POLICY,OFFICIAL_DATE_ONLY_POLICY].includes(input.e2eApproval.policyVersion))return {ok:false,error:articlePublicationError("ineligible")};
     let reusedApproval=false;
-    if(!input.e2eApproval&&protectedSource&&input.targetState==="published") {
+    if(!input.e2eApproval&&!input.officialDateOnlyCorrection&&protectedSource&&input.targetState==="published") {
       if(!managed||managed.expected_publication_state!=="published")return {ok:false,error:articlePublicationError("ineligible")};
       input={...input,e2eApproval:{hashSchema:managed.approval_hash_schema as "worldcons.approval.v1"|"worldcons.approval.v2",mode:String(managed.approval_mode) as "human"|"automatic",policyVersion:String(managed.policy_version),
         evidenceRef:String(managed.approval_evidence_ref),sourceEvidenceRef:String(managed.source_evidence_ref),
@@ -597,6 +610,11 @@ export async function transitionArticlePublicationInD1(
         }
       }
     }
+    const publication = await one<Row>(binding, "SELECT * FROM article_publications_p3 WHERE article_id=?", [input.articleId]);
+    const currentPublicationRevision = asNumber(publication?.revision);
+    if (currentPublicationRevision !== input.expectedPublicationRevision) {
+      return { ok: false, error: articlePublicationError("stale_revision") };
+    }
     const p3Head = await one<Row>(binding, "SELECT * FROM article_version_heads_p3 WHERE article_id=?", [input.articleId]);
     const v4Head = await one<Row>(binding, "SELECT * FROM article_revision_heads_v4 WHERE article_id=?", [input.articleId]);
     const p3Revision = asNumber(p3Head?.current_revision);
@@ -616,8 +634,169 @@ export async function transitionArticlePublicationInD1(
     let versionInsert: D1RuntimePreparedStatement | null = null;
     let headUpsert: D1RuntimePreparedStatement | null = null;
     let globalHeadUpsert: D1RuntimePreparedStatement | null = null;
+    let dateOnlyEvidenceInsert: D1RuntimePreparedStatement | null = null;
+    let dateOnlyArticleDateUpdate: D1RuntimePreparedStatement | null = null;
+    let dateOnlyFreshnessInsert: D1RuntimePreparedStatement | null = null;
+    let dateOnlyApproval: SpainDateOnlyApprovalEvidence | null = null;
+    let dateOnlyPrevious: Row | null = null;
     const now = new Date().toISOString();
-    if (input.captureLegacy === true) {
+    const dateOnly = input.officialDateOnlyCorrection;
+    if (dateOnly) {
+      if (input.targetState !== "published") return { ok: false, error: articlePublicationError("ineligible") };
+      if (!/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/u.test(dateOnly.correctedOriginalPublishedAt)
+        || !/^[a-f0-9]{64}$/u.test(dateOnly.evidenceSha256)) {
+        return { ok: false, error: articlePublicationError("invalid_input") };
+      }
+      if (dateOnly.decisionDate !== dateOnly.correctedOriginalPublishedAt.slice(0, 10)) {
+        return { ok: false, error: articlePublicationError("invalid_input") };
+      }
+      const previous = await one<Row>(binding,
+        "SELECT * FROM article_content_versions_p3 WHERE id=? AND article_id=?",
+        [dateOnly.previousVersionId, input.articleId]);
+      if (!previous) return { ok: false, error: articlePublicationError("not_found") };
+      dateOnlyPrevious = previous;
+      if (nullableText(previous.original_published_at)) return { ok: false, error: articlePublicationError("ineligible") };
+      if (!publication || publication.state !== "published" || String(publication.version_id) !== String(previous.id)) {
+        return { ok: false, error: articlePublicationError("ineligible") };
+      }
+      const metadata = jsonObject(article.source_metadata);
+      const safety = jsonObject(metadata.collectionSafety);
+      const catalog = jsonObject(metadata.catalog);
+      if (safety.publishable === false || metadata.sourceTextStatus === "not_available"
+        || (catalog.sourceOnly === true || catalog.sourceOnly === 1 || catalog.sourceOnly === "1")
+        || ["needs_review", "needs_triage", "closed_private", "rejected", "blocked"].includes(String(article.review_state ?? ""))) {
+        return { ok: false, error: articlePublicationError("ineligible") };
+      }
+      if (input.versionId && String(input.versionId) !== String(previous.id)) {
+        return { ok: false, error: articlePublicationError("invalid_input") };
+      }
+      const existingArticleDate = nullableText(article.original_published_at);
+      if (existingArticleDate && spainDateOnlyDateOnly(existingArticleDate) !== dateOnly.decisionDate) {
+        return { ok: false, error: articlePublicationError("ineligible") };
+      }
+      const evidence: SpainOfficialDateEvidence = {
+        hjId: dateOnly.hjId,
+        canonicalUrl: dateOnly.officialSourceUrl,
+        fetched: true,
+        ok: true,
+        decisionDate: dateOnly.decisionDate,
+        ...(dateOnly.rawFechaRegistro ? { rawFechaRegistro: dateOnly.rawFechaRegistro } : {}),
+        ...(dateOnly.boeDate ? { boeDate: dateOnly.boeDate } : {}),
+        ...(dateOnly.ecli ? { ecli: dateOnly.ecli } : {}),
+        heading: {
+          identifierText: dateOnly.headingIdentifier,
+          resolutionType: dateOnly.resolutionType as "SENTENCIA" | "AUTO" | "DECLARACION",
+          resolutionNumber: dateOnly.resolutionNumber,
+          resolutionYear: dateOnly.resolutionYear,
+          decisionDate: dateOnly.decisionDate,
+          ...(dateOnly.ecli ? { ecli: dateOnly.ecli } : {}),
+          ...(dateOnly.boeDate ? { boeDate: dateOnly.boeDate } : {}),
+        },
+        evidenceBasis: "detail_heading",
+        checks: [],
+        warnings: [],
+      };
+      const evidenceValidation = validateSpainDateOnlyEvidence({
+        article,
+        version: previous,
+        evidence,
+        correctedOriginalPublishedAt: dateOnly.correctedOriginalPublishedAt,
+      });
+      if (!evidenceValidation.ok) return { ok: false, error: articlePublicationError("ineligible") };
+
+      const contentHash = await spainDateOnlyContentHash(previous, dateOnly.correctedOriginalPublishedAt);
+      const newVersionId = await spainDateOnlyVersionId(input.articleId, contentHash);
+      const newRevision = currentVersionRevision + 1;
+      version = {
+        ...previous,
+        id: newVersionId,
+        revision: String(newRevision),
+        parent_version_id: previous.id,
+        content_hash: contentHash,
+        provenance_actor_type: "import",
+        provenance_actor_id: input.actorId ?? null,
+        model_ref: "official:FECHA_REGISTRO",
+        prompt_ref: OFFICIAL_DATE_ONLY_POLICY,
+        original_published_at: dateOnly.correctedOriginalPublishedAt,
+        created_at: now,
+      };
+      versionId = newVersionId;
+      versionRevision = newRevision;
+      versionCreated = true;
+
+      const authorization = await assertSpainDateOnlyAuthorization({
+        articleId: input.articleId,
+        previousVersion: previous,
+        correctedVersion: version,
+        publication,
+        managed,
+        correction: dateOnly,
+      });
+      if (!authorization.ok) return { ok: false, error: articlePublicationError("ineligible") };
+      const approval = await buildSpainDateOnlyApprovalEvidence({
+        articleId: input.articleId,
+        previousVersion: previous,
+        correctedVersion: version,
+        managed,
+        correction: dateOnly,
+        evidence,
+        observedAt: now,
+      });
+      input = { ...input, e2eApproval: approval.approvalContext };
+      dateOnlyApproval = approval;
+      dateOnlyEvidenceInsert = spainDateOnlyEvidenceInsert(binding, input.articleId, approval, now);
+      if (!existingArticleDate) {
+        dateOnlyArticleDateUpdate = binding.prepare(
+          "UPDATE articles SET original_published_at=?,updated_at=? WHERE id=? AND original_published_at IS NULL AND content_hash IS ? AND updated_at IS ?",
+        ).bind(dateOnly.correctedOriginalPublishedAt, now, input.articleId, article.content_hash ?? null, article.updated_at ?? null);
+      }
+      versionInsert = binding.prepare(
+        `INSERT INTO article_content_versions_p3 (
+          id,article_id,revision,parent_version_id,content_hash,provenance_actor_type,provenance_actor_id,model_ref,prompt_ref,
+          slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,korean_title,
+          original_published_at,discovered_at,fetched_at,summarized_at,cleaned_text,summary_json,source_metadata,error_metadata,created_at,
+          case_key,version_document_schema,version_role,case_metadata_snapshot,case_identifiers_snapshot,authority_evidence_hash,
+          source_snapshot_id,source_snapshot_hash,source_content_hash,source_anchor_version_id,enrichment_source_content_hash,
+          raw_text_storage_ref,raw_text_blob_hash,raw_text_blob_size,raw_text_externalized_at,raw_text_blob_contract_version
+        ) SELECT ?,article_id,?,?,?,'import',?,'official:FECHA_REGISTRO',?,slug,source_key,jurisdiction,institution_name,content_type,
+          original_url,canonical_url,original_language,original_title,korean_title,?,discovered_at,fetched_at,summarized_at,cleaned_text,
+          summary_json,source_metadata,error_metadata,?,case_key,version_document_schema,version_role,case_metadata_snapshot,
+          case_identifiers_snapshot,authority_evidence_hash,source_snapshot_id,source_snapshot_hash,source_content_hash,
+          source_anchor_version_id,enrichment_source_content_hash,raw_text_storage_ref,raw_text_blob_hash,raw_text_blob_size,
+          raw_text_externalized_at,raw_text_blob_contract_version
+        FROM article_content_versions_p3
+        WHERE id=? AND article_id=? AND original_published_at IS NULL AND content_hash=? AND CAST(revision AS INTEGER)=CAST(? AS INTEGER)`,
+      ).bind(
+        newVersionId, String(newRevision), String(previous.id), contentHash, input.actorId ?? null,
+        OFFICIAL_DATE_ONLY_POLICY, dateOnly.correctedOriginalPublishedAt, now,
+        previous.id, input.articleId, previous.content_hash, previous.revision,
+      );
+      headUpsert = binding.prepare(
+        "INSERT INTO article_version_heads_p3 (article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at WHERE article_version_heads_p3.current_version_id=? AND article_version_heads_p3.current_revision=?",
+      ).bind(input.articleId, newVersionId, String(newRevision), now,
+        p3Head?.current_version_id ?? "", p3Head?.current_revision ?? "0");
+      globalHeadUpsert = binding.prepare(
+        "INSERT INTO article_revision_heads_v4 (article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at WHERE article_revision_heads_v4.current_version_id=? AND article_revision_heads_v4.current_revision=?",
+      ).bind(input.articleId, newVersionId, String(newRevision), now,
+        v4Head?.current_version_id ?? "", v4Head?.current_revision ?? "0");
+      dateOnlyFreshnessInsert = binding.prepare(
+        `INSERT OR IGNORE INTO legacy_version_freshness_classifications_v4
+          (version_id,article_id,freshness,freshness_basis,source_anchor_version_id,source_content_hash,evidence,classified_at,classified_by)
+         SELECT ?,?,'current','legacy_same_version',NULL,?,?,?,'spain-official-date-only'
+         WHERE EXISTS (SELECT 1 FROM article_content_versions_p3 WHERE id=? AND article_id=? AND original_published_at=?)`,
+      ).bind(
+        newVersionId, input.articleId, contentHash,
+        JSON.stringify({
+          reason: "verified_official_fecha_registro_date_only_republish",
+          policyVersion: OFFICIAL_DATE_ONLY_POLICY,
+          evidenceSha256: dateOnly.evidenceSha256,
+          previousVersionId: previous.id,
+          decisionDate: dateOnly.decisionDate,
+          authorizationBasis: authorization.authorizationBasis,
+        }),
+        now, newVersionId, input.articleId, dateOnly.correctedOriginalPublishedAt,
+      );
+    } else if (input.captureLegacy === true) {
       const sourceMetadata = approvalSourceMetadata(article.source_metadata, Boolean(input.e2eApproval));
       const errorMetadata = safeErrorMetadata(article.error_metadata, article.error_class);
       const versionDocument = {
@@ -741,11 +920,6 @@ export async function transitionArticlePublicationInD1(
     }
     if (!version || !versionId) return { ok: false, error: articlePublicationError("internal") };
 
-    const publication = await one<Row>(binding, "SELECT * FROM article_publications_p3 WHERE article_id=?", [input.articleId]);
-    const currentPublicationRevision = asNumber(publication?.revision);
-    if (currentPublicationRevision !== input.expectedPublicationRevision) {
-      return { ok: false, error: articlePublicationError("stale_revision") };
-    }
     const oldState = nullableText(publication?.state) as ArticlePublicationState | null;
     const oldVersionId = nullableText(publication?.version_id);
     const publicationApplied = !publication
@@ -767,7 +941,7 @@ export async function transitionArticlePublicationInD1(
     const publicationRevision = publication
       ? currentPublicationRevision + (publicationApplied ? 1 : 0)
       : 1;
-    if(reusedApproval||(input.e2eApproval?.mode==="human"&&input.actorType!=="human")) {
+    if(!input.officialDateOnlyCorrection&&(reusedApproval||(input.e2eApproval?.mode==="human"&&input.actorType!=="human"))) {
       if(!managed||managed.expected_publication_state!=="published"||version.id!==managed.expected_version_id
         ||(await approvalIdentity(input.articleId,version,input.e2eApproval!.policyVersion,approvalHashSchema(input.e2eApproval!))).approvalSnapshotHash!==managed.approval_snapshot_hash)
         return {ok:false,error:articlePublicationError("ineligible")};
@@ -777,13 +951,18 @@ export async function transitionArticlePublicationInD1(
     const generationCommit = input.e2eApproval ? await prepareGenerationCommit(binding, input,
       { article, p3Head, v4Head, publication }, { version, publicationId, publicationRevision, now }) : null;
     const statements: D1RuntimePreparedStatement[] = [];
+    // The narrow approval receipt commits in the SAME batch as the generation
+    // guard, so any rejected date-only publication leaves no evidence behind.
+    if (dateOnlyEvidenceInsert) statements.push(dateOnlyEvidenceInsert);
     // CHECK failure aborts the ENTIRE D1 batch before any P3/outbox/audit write.
     // Checking UPDATE changes after batch() would leave other writes committed.
     if (generationCommit) {
       statements.push(generationCommit.guard);
       if (generationCommit.authorization) statements.push(generationCommit.authorization);
     }
+    if (dateOnlyArticleDateUpdate) statements.push(dateOnlyArticleDateUpdate);
     if (versionInsert) statements.push(versionInsert);
+    if (dateOnlyFreshnessInsert) statements.push(dateOnlyFreshnessInsert);
     // A newly captured, published legacy snapshot is the authoritative current
     // Core state (guarded by expectedLegacyUpdatedAt). Search gate2 requires a
     // current classification for the exact immutable P3 version. Keep that
@@ -891,6 +1070,32 @@ export async function transitionArticlePublicationInD1(
       versionId, String(versionRevision), input.targetState, Number(versionCreated), Number(publicationApplied), now,
     ));
     if (generationCommit) statements.push(...generationCommit.statements, generationCommit.cleanup);
+    if (dateOnly && dateOnlyPrevious && dateOnlyApproval) {
+      const guardToken = crypto.randomUUID();
+      statements.push(
+        binding.prepare(
+          `INSERT INTO e2e_commit_guards_v1 (token,assertion) VALUES (?,CASE WHEN
+            EXISTS (SELECT 1 FROM article_content_versions_p3 WHERE id=? AND article_id=? AND parent_version_id=? AND original_published_at=? AND content_hash=?)
+            AND EXISTS (SELECT 1 FROM article_content_versions_p3 WHERE id=? AND article_id=? AND original_published_at IS NULL AND content_hash=? AND CAST(revision AS INTEGER)=CAST(? AS INTEGER))
+            AND EXISTS (SELECT 1 FROM article_publications_p3 WHERE id=? AND article_id=? AND state='published' AND version_id=? AND CAST(revision AS INTEGER)=CAST(? AS INTEGER))
+            AND EXISTS (SELECT 1 FROM article_version_heads_p3 WHERE article_id=? AND current_version_id=? AND CAST(current_revision AS INTEGER)=CAST(? AS INTEGER))
+            AND EXISTS (SELECT 1 FROM article_revision_heads_v4 WHERE article_id=? AND current_version_id=? AND CAST(current_revision AS INTEGER)=CAST(? AS INTEGER))
+            AND EXISTS (SELECT 1 FROM articles WHERE id=? AND original_published_at=?)
+            AND EXISTS (SELECT 1 FROM e2e_approval_evidence_v1 WHERE approval_key=? AND article_id=? AND policy_version=? AND source_artifact_hash=?)
+            THEN 1 ELSE 0 END)`,
+        ).bind(
+          guardToken,
+          version.id, input.articleId, dateOnlyPrevious.id, dateOnly.correctedOriginalPublishedAt, version.content_hash,
+          dateOnlyPrevious.id, input.articleId, dateOnlyPrevious.content_hash, dateOnlyPrevious.revision,
+          publicationId, input.articleId, version.id, publicationRevision,
+          input.articleId, version.id, versionRevision,
+          input.articleId, version.id, versionRevision,
+          input.articleId, dateOnly.correctedOriginalPublishedAt,
+          dateOnlyApproval.identity.approvalKey, input.articleId, OFFICIAL_DATE_ONLY_POLICY, dateOnlyApproval.sourceArtifactHash,
+        ),
+        binding.prepare("DELETE FROM e2e_commit_guards_v1 WHERE token=?").bind(guardToken),
+      );
+    }
     await batch(binding, statements);
     return {
       ok: true,
