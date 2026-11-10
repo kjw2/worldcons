@@ -81,7 +81,6 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
 
   const { article, related } = detailData;
   const summary = article.summaryJson;
-  const summaryModelName = summary?.aiMetadata?.model ?? "모델 정보 없음";
   const theme = themeForJurisdiction(article.jurisdiction);
   const articleViewEvent = {
     eventType: "article_view" as const,
@@ -274,14 +273,6 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
             </section>
           ) : null}
 
-          {summary ? (
-            <section className="bg-archive-surface-soft px-1 py-5 sm:px-4">
-              <h2 className="text-base font-semibold text-ink">AI 요약 참고</h2>
-              <p className="mt-2 text-sm leading-6 text-ink-muted">
-                이 요약은 AI 언어 모델({summaryModelName})을 사용해 생성한 참고용 정보입니다. 정확한 법적 판단이나 인용은 공식 원문을 확인하세요.
-              </p>
-            </section>
-          ) : null}
         </aside>
       </div>
     </PageShell>

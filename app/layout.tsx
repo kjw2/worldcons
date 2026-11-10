@@ -55,7 +55,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               </nav>
             </div>
             <div className="mt-6 border-t border-archive-line pt-5 text-xs leading-6 text-archive-muted">
-              <p>각국 헌법재판기관의 공개 자료를 기반으로 제공하며 번역·요약은 참고용입니다. 법적 판단이나 인용에는 반드시 해당 기관의 공식 원문을 확인하세요.</p>
+              <p>각국 헌법재판기관의 공개 자료를 기반으로 제공하며 이 요약은 AI 언어 모델을 사용해 생성한 참고용 정보입니다.. 법적 판단이나 인용에는 반드시 해당 기관의 공식 원문을 확인하세요.</p>
               <p className="mt-1">© 2026 {SITE_NAME}</p>
             </div>
           </div>
