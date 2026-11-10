@@ -21,6 +21,30 @@ export function isOutOfRangeSourceArchivePage(page: number, itemCount: number) {
   return page > 1 && itemCount === 0;
 }
 
+/** Prefer the newest actual court decision date on an archive page.
+ * An undated first result must not obscure a later dated result, and
+ * created_at must never be substituted for the court decision date.
+ */
+export function latestSourceArchiveDate(items: ReadonlyArray<{
+  originalPublishedAt?: string | null;
+  summarizedAt?: string | null;
+}>): string | null {
+  const newest = (values: readonly (string | null | undefined)[]) => {
+    let bestValue: string | null = null;
+    let bestTime = Number.NEGATIVE_INFINITY;
+    for (const value of values) {
+      if (typeof value !== "string" || !value.trim()) continue;
+      const time = Date.parse(value);
+      if (!Number.isFinite(time) || time <= bestTime) continue;
+      bestValue = value;
+      bestTime = time;
+    }
+    return bestValue;
+  };
+  return newest(items.map(item => item.originalPublishedAt))
+    ?? newest(items.map(item => item.summarizedAt));
+}
+
 export function sourceArchiveMetadata(source: SourceRecord, page: number | null): Metadata {
   const canonical = `${getAppBaseUrl()}/sources/${source.sourceKey}`;
   if (page === null) {
