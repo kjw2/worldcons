@@ -249,6 +249,11 @@
       "binding": "OPERATOR_CANARY_WORKFLOW",
       "name": "worldcons-operator-canary-v1",
       "class_name": "WorldconsOperatorCanaryWorkflow"
+    },
+    {
+      "binding": "SPAIN_DATE_OPERATOR_WORKFLOW",
+      "name": "worldcons-spain-date-operator-v1",
+      "class_name": "WorldconsSpainDateOperatorWorkflow"
     }
   ]
 }

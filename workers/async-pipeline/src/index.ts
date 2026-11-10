@@ -1,6 +1,10 @@
 import { drainSearchMetadataRepairs } from "@/lib/cloudflare/search-projection/metadata-repair";
 import {runDiscoveryCoverageScheduled,type DiscoveryCoverageEnvironment} from "./discovery-coverage-scheduled";
 import { stagedE2EOptionsFromEnvironment } from "./staged-e2e";
+import { parseSpainDateOperatorCommand } from "./spain-date-operator";
+import { applySpainDateOnlyRepublication } from "@/lib/ingest/spain-date-only-apply";
+import { consumeSearchRepair } from "@/lib/cloudflare/e2e/search-repair-consumer";
+import { verifySearchRepair } from "@/lib/cloudflare/e2e/search-verification";
 import { consumeE2ESearchRepairBatch, E2E_SEARCH_REPAIR_QUEUE_NAME, type E2ESearchConsumerEnvironment } from "./e2e-search-repair-queue";
 import { runE2ESearchRepairScheduled, type E2ESearchRepairEnvironment } from "./e2e-search-repair-scheduled";
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
@@ -845,6 +849,89 @@ export class WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint<Env, Ope
       dispatchReason: dispatch?.reason ?? null,
       note: "Canary seeds and dispatches exactly one staged Crawl job. It does not publish, bypass review, or produce a seven-stage lineage; observe with pnpm audit:canary-lineage.",
     };
+  }
+}
+
+/**
+ * The control-plane trigger is Cloudflare account OAuth (wrangler workflows
+ * trigger), not an HTTP endpoint. Each invocation is bound to ONE existing
+ * official Spanish court article. A fresh read-only preview supplies the
+ * current version and evidence-bound plan hash; apply requires both exact
+ * values and re-runs the existing publication/CAS/E2E approval guards.
+ */
+export class WorldconsSpainDateOperatorWorkflow extends WorkflowEntrypoint<Env, unknown> {
+  async run(event: WorkflowEvent<unknown>, step: WorkflowStep) {
+    const validated = parseSpainDateOperatorCommand(event.payload);
+    if (!validated.ok) throw new NonRetryableError(validated.reason);
+    const command = validated.command;
+    setRuntimeD1Bindings({
+      worldcons_core: this.env.WORLDCONS_CORE,
+      worldcons_search: this.env.WORLDCONS_SEARCH,
+      worldcons_ingest: this.env.WORLDCONS_INGEST,
+      worldcons_ops: this.env.WORLDCONS_OPS,
+    });
+    const actorId = "operator:cloudflare-iam-spain-date";
+    const correlationId = `cf-workflow:spain-date:${event.instanceId}`;
+    const core = this.env.WORLDCONS_CORE;
+    const planned = await step.do(`preview-${command.articleId}`, { timeout: "3 minutes" },
+      async () => {
+        const result = await applySpainDateOnlyRepublication({
+          core, articleId: command.articleId, actorId, correlationId, apply: false,
+        });
+        if (result.status !== "planned") return { status: result.status, reason: "no_eligible_managed_correction" };
+        return {
+          status: result.status,
+          articleId: result.articleId,
+          previousVersionId: result.previousVersionId,
+          correctedOriginalPublishedAt: result.correctedOriginalPublishedAt,
+          decisionDate: result.decisionDate,
+          evidenceSha256: result.evidenceSha256,
+          authorizationBasis: result.authorizationBasis,
+          planHash: result.planHash,
+        };
+      });
+    if (planned.status !== "planned") return { mode: command.mode, ...planned };
+    // Legacy P3 rows require a separate explicit operator authorization receipt;
+    // this account-level single-item workflow does not manufacture one.
+    if (planned.authorizationBasis !== "managed_generation") {
+      return { mode: command.mode, status: "approval_required", articleId: command.articleId };
+    }
+    if (command.mode === "preview") {
+      return { mode: command.mode, ...planned, readOnly: true };
+    }
+    if (command.expectedVersionId !== planned.previousVersionId || command.confirmPlanHash !== planned.planHash) {
+      throw new NonRetryableError("spain_date_operator.stale_preview");
+    }
+    const applied = await step.do(`apply-${command.articleId}`, { timeout: "5 minutes" },
+      () => applySpainDateOnlyRepublication({
+        core, articleId: command.articleId, actorId, correlationId,
+        apply: true, confirmPlanHash: command.confirmPlanHash,
+      }));
+    if (applied.status !== "applied") return { mode: command.mode, ...applied };
+    if (!applied.searchRepairOutboxId || !applied.generationId) {
+      return { mode: command.mode, ...applied, verification: "queued_missing_outbox_receipt" };
+    }
+    // The E2E search outbox remains durable even if this immediate attempt
+    // cannot complete; normal Queue/cron consumers retry with fenced budgets.
+    const search = await step.do(`search-${command.articleId}`, { timeout: "4 minutes" }, async () => {
+      const message = {
+        schemaVersion: 1, type: "e2e-search-repair", outboxId: applied.searchRepairOutboxId!,
+      };
+      try {
+        const consumed = await consumeSearchRepair(core, this.env.WORLDCONS_SEARCH, message);
+        if (!["awaiting_verification", "terminal"].includes(consumed.status)) {
+          return { apply: consumed.status, verify: "pending" };
+        }
+        const verified = await verifySearchRepair(core, this.env.WORLDCONS_SEARCH, message, {
+          apiBaseUrl: this.env.WORLDCONS_E2E_VERIFIER_API_BASE_URL,
+          deploymentRef: this.env.WORLDCONS_E2E_DEPLOYMENT_REF,
+        });
+        return { apply: consumed.status, verify: verified.status };
+      } catch {
+        return { apply: "retry_pending", verify: "pending" };
+      }
+    });
+    return { mode: command.mode, ...applied, search };
   }
 }
 
