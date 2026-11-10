@@ -1,7 +1,7 @@
 import { drainSearchMetadataRepairs } from "@/lib/cloudflare/search-projection/metadata-repair";
 import {runDiscoveryCoverageScheduled,type DiscoveryCoverageEnvironment} from "./discovery-coverage-scheduled";
 import { stagedE2EOptionsFromEnvironment } from "./staged-e2e";
-import { parseSpainDateOperatorCommand } from "./spain-date-operator";
+import { CLOUD_IAM_OPERATOR_ACTOR, parseSpainDateOperatorCommand } from "./spain-date-operator";
 import { applySpainDateOnlyRepublication } from "@/lib/ingest/spain-date-only-apply";
 import { consumeSearchRepair } from "@/lib/cloudflare/e2e/search-repair-consumer";
 import { verifySearchRepair } from "@/lib/cloudflare/e2e/search-verification";
@@ -870,7 +870,7 @@ export class WorldconsSpainDateOperatorWorkflow extends WorkflowEntrypoint<Env, 
       worldcons_ingest: this.env.WORLDCONS_INGEST,
       worldcons_ops: this.env.WORLDCONS_OPS,
     });
-    const actorId = "operator:cloudflare-iam-spain-date";
+    const actorId = CLOUD_IAM_OPERATOR_ACTOR;
     const correlationId = `cf-workflow:spain-date:${event.instanceId}`;
     const core = this.env.WORLDCONS_CORE;
     const planned = await step.do(`preview-${command.articleId}`, { timeout: "3 minutes" },
@@ -891,21 +891,31 @@ export class WorldconsSpainDateOperatorWorkflow extends WorkflowEntrypoint<Env, 
         };
       });
     if (planned.status !== "planned") return { mode: command.mode, ...planned };
-    // Legacy P3 rows require a separate explicit operator authorization receipt;
-    // this account-level single-item workflow does not manufacture one.
-    if (planned.authorizationBasis !== "managed_generation") {
-      return { mode: command.mode, status: "approval_required", articleId: command.articleId };
-    }
     if (command.mode === "preview") {
       return { mode: command.mode, ...planned, readOnly: true };
     }
+    // Managed E2E owners and legacy operator authorizations are distinct.
+    // Cloudflare IAM triggers are independently audited by the provider; the
+    // explicit legacy event carries its own record bound to plan/version/date.
+    if (planned.authorizationBasis === "operator_authorization" && command.mode !== "apply-legacy") {
+      return { mode: command.mode, status: "approval_required", articleId: command.articleId };
+    }
+    if (planned.authorizationBasis === "managed_generation" && command.mode !== "apply") {
+      throw new NonRetryableError("spain_date_operator.legacy_receipt_not_applicable");
+    }
     if (command.expectedVersionId !== planned.previousVersionId || command.confirmPlanHash !== planned.planHash) {
       throw new NonRetryableError("spain_date_operator.stale_preview");
+    }
+    if (command.mode === "apply-legacy"
+      && (command.operatorAuthorization?.evidenceSha256 !== planned.evidenceSha256
+        || command.operatorAuthorization?.correctedOriginalPublishedAt !== planned.correctedOriginalPublishedAt)) {
+      throw new NonRetryableError("spain_date_operator.legacy_receipt_evidence_mismatch");
     }
     const applied = await step.do(`apply-${command.articleId}`, { timeout: "5 minutes" },
       () => applySpainDateOnlyRepublication({
         core, articleId: command.articleId, actorId, correlationId,
         apply: true, confirmPlanHash: command.confirmPlanHash,
+        ...(command.mode === "apply-legacy" ? { operatorAuthorization: command.operatorAuthorization } : {}),
       }));
     if (applied.status !== "applied") return { mode: command.mode, ...applied };
     if (!applied.searchRepairOutboxId || !applied.generationId) {
