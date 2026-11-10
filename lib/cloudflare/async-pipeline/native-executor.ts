@@ -26,7 +26,7 @@ export interface M8NativeEnvironment {
       readiness: unknown;
       stoppedReason?: string;
     }>;
-    runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number }): Promise<{
+    runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number; source?: "scheduled" }): Promise<{
       mode: "database";
       status: "completed" | "deferred" | "failed" | "unavailable";
       summarizedCount: number;
@@ -77,6 +77,7 @@ export async function executeM8TaskNative(
       const limit = Math.max(1, Math.min(Number(env.TRANSLATION_DRAIN_LIMIT ?? 5) || 5, 50));
       const maxPasses = Math.max(1, Math.min(Number(env.TRANSLATION_DRAIN_MAX_PASSES ?? 1) || 1, 10));
       const result = await env.WORLDCONS_APP_SERVICE.runSummaryDrain({
+        source: "scheduled",
         limit,
         maxPasses,
         retryAttempts: 1,

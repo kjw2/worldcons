@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { completeGeminiJson } from "@/lib/ai/gemini-router";
+import { completeGatewaySummaryJson, type GatewaySummaryConfig } from "@/lib/ai/gateway-summary";
 import {
   getRuntimeLlmSettings,
   type RuntimeLlmProviderSettings,
@@ -15,6 +16,7 @@ export type LlmMessage = {
 export type LlmProvider = ConfigurableLlmProvider | "mock";
 
 export interface LlmCompletionOptions {
+  gateway?: GatewaySummaryConfig;
   provider?: Exclude<LlmProvider, "mock">;
   model?: string;
   apiKeys?: string[];
@@ -25,8 +27,12 @@ export interface LlmCompletionOptions {
 
 export interface LlmCompletionResult {
   content: string;
-  provider: LlmProvider;
+  provider: LlmProvider | "cloudflare-ai-gateway";
   model: string;
+  /** Gateway metadata only, never prompt or completion payloads. */
+  requestId?: string;
+  upstreamProvider?: string;
+  usage?: { promptTokens?: number; completionTokens?: number };
 }
 
 const cachedOpenAIClients = new Map<string, OpenAI>();
@@ -284,6 +290,10 @@ async function completeWithProvider(
 }
 
 export async function completeJsonWithMetadata(messages: LlmMessage[], options: LlmCompletionOptions = {}): Promise<LlmCompletionResult | null> {
+  if (options.gateway) {
+    if (options.model || (options.provider && options.provider !== "gemini")) throw new Error("summary_gateway.model_override_forbidden");
+    return completeGatewaySummaryJson(messages, options.gateway);
+  }
   const runtime = options.apiKeys ? null : await getRuntimeLlmSettings();
   const provider = options.provider ?? runtime?.summary.provider ?? "openai";
   const providerFallbackEnabled = Boolean(runtime)

@@ -991,7 +991,7 @@ function stageCrawlerBindings(env: Env): NativeCrawlerBindings {
  * call per item. Every method is scoped to exactly one article id.
  */
 interface WorldconsOpsStageService {
-  runSummaryArticle(input: { articleId: string; model?: string }): Promise<{
+  runSummaryArticle(input: { articleId: string; model?: string; source?: "ingest" }): Promise<{
     result?: { status?: "summarized" | "failed" | "skipped"; retryable?: boolean; errorMessage?: string; reason?: string };
   }>;
   runPublishArticle(input: { articleId: string; actorId?: string }): Promise<{
@@ -1027,7 +1027,7 @@ function ingestStageHandlersFor(env: Env): IngestStageHandlerRegistry {
     browserNavigate: (input) => browserNavigate(input, env.BROWSER),
     translation: {
       async summarize(articleId) {
-        const response = await appService.runSummaryArticle({ articleId });
+        const response = await appService.runSummaryArticle({ articleId, source: "ingest" });
         const result = response?.result;
         const status = result?.status;
         if (status === "summarized") return { status: "summarized" };

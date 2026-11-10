@@ -3,6 +3,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import test from "node:test";
 import { setRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
 import { runD1SummaryDrain, runD1SummarizeArticle, runD1SyncSummaryTags } from "@/lib/cloudflare/summary/d1-summary-drain";
+import type { GatewaySummaryConfig } from "@/lib/ai/gateway-summary";
 import { runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
 
 const goodSummary = {
@@ -114,6 +115,85 @@ function close({ core, ingest }: { core: DatabaseSync; ingest: DatabaseSync }) {
   core.close();
   ingest.close();
 }
+
+const p1Gateway: GatewaySummaryConfig = {
+  ai: { async run() { throw new Error("No external Gateway call should be made by D1 fixture"); } },
+  gatewayId: "default",
+  route: "gemini-flash-fallback",
+};
+
+test("P1 G1 single-article path allows Gateway without direct Gemini key and retains private publication gate", async () => {
+  const db = setup();
+  try {
+    let called = 0;
+    const result = await runD1SummarizeArticle({
+      articleId: "11111111-1111-4111-8111-111111111111",
+      apiKeys: [],
+      gateway: p1Gateway,
+      summarize: async (_article, options) => {
+        called++;
+        assert.equal(options?.gateway, p1Gateway);
+        assert.equal(options?.allowProviderFallback, false);
+        assert.equal(options?.model, undefined);
+        return { ...goodSummary, aiMetadata: { provider: "cloudflare-ai-gateway", model: "gemini-3.1-flash-lite" } } as never;
+      },
+      createEmbedding: async () => null,
+    });
+    assert.equal(called, 1);
+    assert.equal(result.result.status, "summarized");
+    const saved = db.core.prepare("SELECT translation_provider,translation_model FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get();
+    assert.equal(saved?.translation_provider, "cloudflare-ai-gateway");
+    assert.equal(saved?.translation_model, "gemini-3.1-flash-lite");
+    assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_publications_p3 WHERE state='published'").get()?.count, 0);
+  } finally {
+    close(db);
+  }
+});
+
+test("P1 G2 scheduled backlog uses same Gateway without direct Gemini key and does not auto-publish", async () => {
+  const db = setup();
+  try {
+    let called = 0;
+    const result = await runD1SummaryDrain({
+      limit: 1,
+      maxPasses: 1,
+      apiKeys: [],
+      gateway: p1Gateway,
+      summarize: async (_article, options) => {
+        called++;
+        assert.equal(options?.gateway, p1Gateway);
+        assert.equal(options?.allowProviderFallback, false);
+        return { ...goodSummary, aiMetadata: { provider: "cloudflare-ai-gateway", model: "gemini-3.5-flash-lite" } } as never;
+      },
+      createEmbedding: async () => null,
+    });
+    assert.equal(called, 1);
+    assert.equal(result.summarizedCount, 1);
+    assert.equal(result.status, "completed");
+    assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_publications_p3 WHERE state='published'").get()?.count, 0);
+    assert.equal(db.core.prepare("SELECT translation_model FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get()?.translation_model, "gemini-3.5-flash-lite");
+  } finally {
+    close(db);
+  }
+});
+
+test("P1 Gateway eligibility denies AI invocation for metadata-only/non-publishable articles", async () => {
+  const db = setup({ metadata: { collection: { publishable: false, sourceTextAvailable: false, sourceUrlVerified: false, strategy: "metadata_only" } } });
+  try {
+    let called = 0;
+    const result = await runD1SummarizeArticle({
+      articleId: "11111111-1111-4111-8111-111111111111",
+      apiKeys: [],
+      gateway: p1Gateway,
+      summarize: async () => { called++; return goodSummary as never; },
+      createEmbedding: async () => null,
+    });
+    assert.equal(result.result.status, "skipped");
+    assert.equal(called, 0);
+  } finally {
+    close(db);
+  }
+});
 
 test("D1 summary candidate selection enforces publishability, source, and round-robin ordering", async () => {
   const db = setup();

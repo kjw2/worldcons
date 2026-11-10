@@ -80,6 +80,7 @@ import {
 import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
 import { runD1RefreshTagCounts, runD1SummarizeArticle, runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
 import { runD1PrivateUsSummary } from "@/lib/cloudflare/summary/us-private-summary";
+import { resolveP1GatewaySummary, type GatewaySummaryAiBinding } from "@/lib/ai/gateway-summary";
 import { runD1PublishArticle, runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
 import { syncSearchProjectionForArticle } from "@/lib/cloudflare/search-projection/d1-sync";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
@@ -87,6 +88,10 @@ import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
 interface WorldconsWorkerEnv {
+  AI?: GatewaySummaryAiBinding;
+  WORLDCONS_SUMMARY_BACKEND?: string;
+  WORLDCONS_AI_GATEWAY_ID?: string;
+  WORLDCONS_AI_GATEWAY_ROUTE?: string;
   WORLDCONS_RAW: ArtifactBlobR2Bucket;
   WORLDCONS_CORE?: D1RuntimeDatabase;
   WORLDCONS_INGEST?: D1RuntimeDatabase;
@@ -122,6 +127,7 @@ interface WorldconsWorkerEnv {
   WORLDCONS_CORE_WRITE_AUTHORITY?: string;
   [key: string]: unknown;
 }
+
 
 interface WorkerExecutionContextLike {
   waitUntil(promise: Promise<unknown>): void;
@@ -296,7 +302,7 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     return runD1PublicationDrain(input);
   }
 
-  async runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number }) {
+  async runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number; source?: "scheduled" }) {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
@@ -309,17 +315,19 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
       .map((key) => key?.trim())
       .filter((key): key is string => Boolean(key));
+    const gateway = resolveP1GatewaySummary(env, input.source);
     return runD1SummaryDrain({
       ...input,
       apiKeys,
+      gateway,
       // Scheduled drains should follow Gemini's live model catalog and retain
       // model failover by default. Only GEMINI_PINNED_MODEL is an explicit
       // operational override that intentionally disables automatic selection.
-      model: env.GEMINI_PINNED_MODEL?.trim() || undefined,
+      model: gateway ? undefined : env.GEMINI_PINNED_MODEL?.trim() || undefined,
     });
   }
 
-  async runSummaryArticle(input: { articleId?: string; slug?: string; model?: string }) {
+  async runSummaryArticle(input: { articleId?: string; slug?: string; model?: string; source?: "ingest" }) {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
@@ -327,10 +335,13 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
     const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
       .map((key) => key?.trim()).filter((key): key is string => Boolean(key));
+    const gateway = resolveP1GatewaySummary(env, input.source);
+    if (gateway && input.model) throw new Error("summary_gateway.model_override_forbidden");
     return runD1SummarizeArticle({
       ...input,
       apiKeys,
-      model: input.model?.trim() || env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
+      gateway,
+      model: gateway ? undefined : input.model?.trim() || env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
     });
   }
 

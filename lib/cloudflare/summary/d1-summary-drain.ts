@@ -2,6 +2,7 @@ import type { SummaryJson, ArticleContentType } from "@/lib/db/types";
 import type { D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import { summarizeArticle } from "@/lib/ai/summarize";
+import type { GatewaySummaryConfig } from "@/lib/ai/gateway-summary";
 import { createEmbeddingArtifact } from "@/lib/ai/embeddings";
 import { tryPersistArticleEmbedding } from "@/lib/ingest/embedding-store";
 import { canSummarizeArticle, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
@@ -348,6 +349,7 @@ export async function runD1SummarizeArticle(input: {
   slug?: string;
   apiKeys: string[];
   model?: string;
+  gateway?: GatewaySummaryConfig;
   summarize?: typeof summarizeArticle;
   createEmbedding?: typeof createEmbeddingArtifact;
 }) {
@@ -363,10 +365,11 @@ export async function runD1SummarizeArticle(input: {
   const row = rows[0];
   if (!row) throw new Error("summary_d1.article_not_found");
   const keys = input.apiKeys.map((key) => key.trim()).filter(Boolean);
-  if (keys.length === 0) throw new Error("summary_d1.api_key_missing");
+  if (keys.length === 0 && !input.gateway) throw new Error("summary_d1.api_key_missing");
   const result = await summarizeCandidate(row, {
     apiKeys: keys,
     model: input.model,
+    gateway: input.gateway,
     summarize: input.summarize,
     createEmbedding: input.createEmbedding,
   });
@@ -527,7 +530,7 @@ async function persistSummarySuccess(
   throw summaryWriteError(lastFailure);
 }
 
-async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: string[]; model?: string; summarize?: typeof summarizeArticle; createEmbedding?: typeof createEmbeddingArtifact }) {
+async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: string[]; model?: string; gateway?: GatewaySummaryConfig; summarize?: typeof summarizeArticle; createEmbedding?: typeof createEmbeddingArtifact }) {
   const sourceMetadata = normalizeSourceMetadata(row.source_metadata);
   const collection = sourceCollection(sourceMetadata);
   const forceAllowed = row.status === "summarized"
@@ -585,19 +588,18 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
       originalPublishedAt: row.original_published_at ?? undefined,
       cleanedText: row.cleaned_text ?? undefined,
       metadata: sourceMetadata,
-    }, {
-      provider: "gemini",
-      model: options.model,
-      providerApiKeys: { gemini: options.apiKeys },
-      allowProviderFallback: true,
-    });
+    }, options.gateway
+      ? { gateway: options.gateway, allowProviderFallback: false }
+      : { provider: "gemini", model: options.model, providerApiKeys: { gemini: options.apiKeys }, allowProviderFallback: true });
     const createEmbedding = options.createEmbedding ?? createEmbeddingArtifact;
     embedding = await createEmbedding(summary, { apiKeys: options.apiKeys, provider: "gemini" }).catch(() => null);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const retryable = isGlobalSummaryBackoff(message) || /timeout|temporar| 5\d\d\b/i.test(message);
+    const retryable = isGlobalSummaryBackoff(message)
+      || /timeout|temporar| 5\d\d\b/i.test(message)
+      || /^summary_gateway\.(?:empty_response|request_failed(?:$| (?:408|429|5\d\d)\b))/.test(message);
     const errorClass = classifySummaryError(message, retryable);
-    const errorMetadata = { message, retryable, requestedProvider: "gemini", requestedModel: options.model ?? null };
+    const errorMetadata = { message, retryable, requestedProvider: options.gateway ? "cloudflare-ai-gateway" : "gemini", requestedModel: options.gateway ? `dynamic/${options.gateway.route}` : options.model ?? null };
     const status = forceAllowed || retryable ? row.status : "failed_summary";
     const now = new Date().toISOString();
     const translationStatus = forceAllowed ? row.translation_status ?? "translated" : retryable ? "pending" : "failed";
@@ -663,6 +665,7 @@ export async function runD1SummaryDrain(input: {
   retryDelayMs?: number;
   apiKeys: string[];
   model?: string;
+  gateway?: GatewaySummaryConfig;
   summarize?: typeof summarizeArticle;
   createEmbedding?: typeof createEmbeddingArtifact;
 }) {
@@ -687,7 +690,7 @@ export async function runD1SummaryDrain(input: {
   const deferredBySource: Record<string, number> = {};
   const runIds = new Set<string>();
   const keys = input.apiKeys.map((key) => key.trim()).filter(Boolean);
-  if (keys.length === 0) {
+  if (keys.length === 0 && !input.gateway) {
     return { mode: "database" as const, status: "unavailable" as const, summarizedCount, failedCount, skippedCount, deferredCount, candidateCount: candidates.length, attemptedCount, retryCount, passes, limitReached: candidates.length > 0, stoppedReason: "Gemini API key is not configured.", recoveredStale };
   }
   let exhaustedPasses = true;
@@ -707,13 +710,13 @@ export async function runD1SummaryDrain(input: {
       }
       attemptedCount += 1;
       passAttempted += 1;
-      let result = await summarizeCandidate(row, { apiKeys: keys, model: input.model, summarize: input.summarize, createEmbedding: input.createEmbedding });
+      let result = await summarizeCandidate(row, { apiKeys: keys, model: input.model, gateway: input.gateway, summarize: input.summarize, createEmbedding: input.createEmbedding });
       for (let retryIndex = 0; result.status === "failed" && result.retryable && retryIndex < retryAttempts; retryIndex += 1) {
         await new Promise<void>((resolve) => setTimeout(resolve, summaryRetryDelayMs(result.errorMessage, retryIndex, retryDelayMs)));
         retryCount += 1;
         const retryRow = await readSummaryCandidate(d1(), row.id);
         if (!retryRow) break;
-        result = await summarizeCandidate(retryRow, { apiKeys: keys, model: input.model, summarize: input.summarize, createEmbedding: input.createEmbedding });
+        result = await summarizeCandidate(retryRow, { apiKeys: keys, model: input.model, gateway: input.gateway, summarize: input.summarize, createEmbedding: input.createEmbedding });
       }
       if (result.status === "skipped") {
         skippedCount += 1;
