@@ -18,12 +18,19 @@ test("M4 new synthetic official FR case flows Discovery-to-Search unattended thr
   const store=new Map<string,Uint8Array>();
   const bucket:IngestStageRawBucket={async put(key,value){store.set(key,value);},async get(key){const value=store.get(key);
     return value?{arrayBuffer:async()=>value.buffer.slice(value.byteOffset,value.byteOffset+value.byteLength) as ArrayBuffer}:null;}};
-  const now=new Date().toISOString(),source="fr-conseil-constitutionnel",detailPath="/decision/2026/2026912QPC.htm";
+  // Keep the synthetic decision one day inside the live discovery lookback window.
+  // Both the reference and authority heading must follow the same fixture date.
+  const now=new Date().toISOString(),source="fr-conseil-constitutionnel";
+  const fixtureDay=new Date(Date.parse(now)-86_400_000);
+  const fixtureYear=fixtureDay.getUTCFullYear();
+  const fixtureDate=fixtureDay.toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric",timeZone:"UTC"});
+  const fixtureCase=`${fixtureYear}-912 QPC`;
+  const detailPath=`/decision/${fixtureYear}/${fixtureYear}912QPC.htm`;
   const officialFetch:typeof fetch=async(input)=>{
     const url=String(input);
     if (url.endsWith("/robots.txt")) return new Response("User-agent: *\nAllow: /\nCrawl-delay: 0");
-    if (url.endsWith("/les-decisions")) return new Response(`<a href="${detailPath}">Décision n° 2026-912 QPC du 10 octobre 2026</a>`);
-    if (url.endsWith(detailPath)) return new Response(`<html><main><h1>Décision n° 2026-912 QPC</h1>${"Official constitutional decision on rights and equal protection. ".repeat(70)}</main></html>`);
+    if (url.endsWith("/les-decisions")) return new Response(`<a href="${detailPath}">Décision n° ${fixtureCase} du ${fixtureDate}</a>`);
+    if (url.endsWith(detailPath)) return new Response(`<html><main><h1>Décision n° ${fixtureCase}</h1>${"Official constitutional decision on rights and equal protection. ".repeat(70)}</main></html>`);
     throw new Error(`Unexpected synthetic authority URL ${url}`);
   };
   const base="https://fixture.example/api";
