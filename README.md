@@ -1,5 +1,7 @@
 # 헌법판례요약시스템
 
+> **AI 번역·요약 전환 계획 (2026-11-10):** [Cloudflare AI Gateway / Gemini 동적 라우팅 기본값](docs/operations/worldcons-ai-gateway-gemini-default-plan-20261110.md). 현재 운영 Gemini 직접 호출과 구분되는 계획이며, Gateway 전환 코드는 아직 적용되지 않았습니다.
+
 세계 여러 나라의 헌법재판 자료를 모아서, 한국어로 읽기 쉽게 정리해 주는 웹 서비스입니다.
 
 아주 쉽게 말하면 이렇습니다.
