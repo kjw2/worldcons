@@ -58,6 +58,7 @@
     "admin:migrations:check": "tsx scripts/admin-redesign-migration-check.ts",
     "test:gate0": "tsx --test tests/admin-redesign-gate0.test.ts",
     "test:p0": "tsx --test tests/admin-command-control-plane.test.ts tests/admin-command-control-plane.postgres.test.ts",
+    "test:ai-gateway-p0": "tsx --test tests/ai-gateway-p0-probe-contract.test.ts",
     "test:p1": "tsx --test tests/admin-command-worker-p1.test.ts tests/admin-command-worker-p1-crawler.test.ts tests/admin-command-worker-p1.postgres.test.ts",
     "test:p2": "tsx --test tests/article-lifecycle-p2.test.ts tests/article-lifecycle-p2.postgres.test.ts",
     "test:p3": "tsx --test tests/article-publication-p3.test.ts tests/article-publication-p3.postgres.test.ts",
