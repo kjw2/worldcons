@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { completeJsonWithMetadata, type LlmMessage } from "@/lib/ai/client";
+import { completeGatewaySummaryJson } from "@/lib/ai/gateway-summary";
+import { getRuntimeGatewayEnvironment } from "@/lib/ai/gateway-runtime";
+import { recordGatewayTestStatus } from "@/lib/ai/llm-settings";
+import { normalizeSummaryCandidate, SummarySchema } from "@/lib/ai/schema";
 import { getRuntimeLlmSettings } from "@/lib/ai/llm-settings";
 import type { ConfigurableLlmProvider } from "@/lib/ai/llm-settings-types";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
@@ -11,7 +15,8 @@ import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const maxDuration = 30;
+// Four Gateway nodes each have a 20-second timeout; do not truncate the route.
+export const maxDuration = 120;
 
 const LLM_HEALTH_MESSAGES: LlmMessage[] = [
   {
@@ -83,12 +88,50 @@ export async function POST(request: Request) {
   if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid admin LLM test request", detail: parsed.error }, { status: 400 });
   }
+  if (parsed.data.provider === "cloudflare-ai-gateway" && parsed.data.model) {
+    return NextResponse.json({ error: "Gateway dynamic route forbids model overrides" }, { status: 400 });
+  }
 
   const startedAt = Date.now();
   const { provider } = parsed.data;
   let requestedModel = parsed.data.model;
 
   try {
+    if (provider === "cloudflare-ai-gateway") {
+      const env = getRuntimeGatewayEnvironment();
+      if (!env.AI) throw new Error("summary_gateway.binding_missing");
+      const gatewayId = env.WORLDCONS_AI_GATEWAY_ID?.trim() || "default";
+      const route = env.WORLDCONS_AI_GATEWAY_ROUTE?.trim() || "gemini-flash-fallback";
+      requestedModel = `dynamic/${route}`;
+      const compatibility = await executeAdminCompatibilityCommand(
+        {
+          commandType: "admin.llm.health-check",
+          payloadRef: { provider: "cloudflare-ai-gateway", model: requestedModel },
+          request,
+        },
+        async () => {
+          const completion = await completeGatewaySummaryJson(LLM_HEALTH_MESSAGES, { ai: env.AI!, gatewayId, route });
+          SummarySchema.parse(normalizeSummaryCandidate(parseJsonCompletion(completion.content)));
+          return completion;
+        },
+        { isLegacySuccess: () => true },
+      );
+      const completion = compatibility.value;
+      const durationMs = Date.now() - startedAt;
+      await recordGatewayTestStatus({
+        status: "ok",
+        checkedAt: new Date().toISOString(),
+        gatewayId,
+        route: requestedModel,
+        model: completion.model,
+        durationMs,
+        ...(completion.requestId ? { requestId: completion.requestId } : {}),
+      }).catch(() => undefined);
+      await recordLlmTestAudit({ request, provider, model: completion.model, result: "ok", durationMs });
+      return NextResponse.json({
+        test: { status: "ok", provider, model: completion.model, durationMs, gatewayId, route: requestedModel, requestId: completion.requestId ?? null },
+      });
+    }
     const runtime = await getRuntimeLlmSettings();
     const providerSettings = runtime.providers[provider];
     requestedModel = requestedModel || (runtime.summary.provider === provider ? runtime.summary.model : providerSettings.defaultModel);
@@ -136,6 +179,17 @@ export async function POST(request: Request) {
     const message = errorMessage(error);
     const errorClass = classifyLlmError(message);
     const durationMs = Date.now() - startedAt;
+    if (provider === "cloudflare-ai-gateway") {
+      const env = getRuntimeGatewayEnvironment();
+      await recordGatewayTestStatus({
+        status: "failed",
+        checkedAt: new Date().toISOString(),
+        gatewayId: env.WORLDCONS_AI_GATEWAY_ID?.trim() || "default",
+        route: `dynamic/${env.WORLDCONS_AI_GATEWAY_ROUTE?.trim() || "gemini-flash-fallback"}`,
+        durationMs,
+        errorCode: message,
+      }).catch(() => undefined);
+    }
     console.warn(`[admin llm-test] ${message}`);
     await recordLlmTestAudit({
       request,

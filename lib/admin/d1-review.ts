@@ -6,6 +6,8 @@ import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import { buildAdminJobIdempotencyKey, createAdminJob } from "@/lib/db/admin-jobs";
 import { MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import type { AdminReviewBody } from "@/lib/security/admin-api-validation";
+import { resolveSummaryBackend } from "@/lib/ai/gateway-summary";
+import { getRuntimeGatewayEnvironment } from "@/lib/ai/gateway-runtime";
 
 type Row = Record<string, unknown>;
 function parsed(value: unknown) { if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>; if (typeof value === "string") { try { const v: unknown = JSON.parse(value); return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {}; } catch { return {}; } } return {}; }
@@ -50,7 +52,9 @@ export async function runD1AdminReviewAction(input:AdminReviewBody,operatorIdent
   const {core,row}=await article(input); if(!row) return {mode:"database" as const,status:"not_found" as const,reason:"자료를 찾을 수 없습니다."};
   const id=text(row,"id")!, slug=text(row,"slug")??undefined, note=input.note;
   if(input.action==="retry-summary"||input.action==="resummarize-with-model") {
+    if(input.action==="resummarize-with-model"&&resolveSummaryBackend(getRuntimeGatewayEnvironment(),"admin")==="cloudflare-ai-gateway") return {mode:"database" as const,status:"unsupported_provider" as const,reason:"Gateway 동적 라우트 사용 중에는 개별 모델 강제 지정을 허용하지 않습니다."};
     if(input.action==="resummarize-with-model"&&input.provider&&input.provider!=="gemini") return {mode:"database" as const,status:"unsupported_provider" as const,reason:"Cloudflare 요약 실행기는 현재 Gemini provider를 사용합니다."};
+    if(input.provider==="cloudflare-ai-gateway"&&input.model) return {mode:"database" as const,status:"unsupported_provider" as const,reason:"Gateway 동적 라우트는 모델 지정이 아닌 자동 폴백만 허용합니다."};
     const job=await queue("retry-summary",row,{action:"retry-summary",articleId:id,slug,model:input.model??null,provider:input.provider??"gemini"});
     return {mode:"database" as const,action:input.action,status:"queued" as const,job};
   }

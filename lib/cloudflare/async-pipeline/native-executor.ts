@@ -26,7 +26,7 @@ export interface M8NativeEnvironment {
       readiness: unknown;
       stoppedReason?: string;
     }>;
-    runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number; source?: "scheduled" }): Promise<{
+    runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number; source?: "scheduled" | "admin" }): Promise<{
       mode: "database";
       status: "completed" | "deferred" | "failed" | "unavailable";
       summarizedCount: number;

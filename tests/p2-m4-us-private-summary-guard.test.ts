@@ -11,6 +11,8 @@ import { canSummarizeArticle } from "../lib/ingest/publishability";
 import { runD1SummarizeArticle } from "../lib/cloudflare/summary/d1-summary-drain";
 import { parseOperatorCanaryEvent } from "../lib/cloudflare/ingest-stages/canary-workflow-payload";
 import { runD1PrivateUsSummary, type UsPrivateSummaryRawBucket } from "../lib/cloudflare/summary/us-private-summary";
+import type { GatewaySummaryConfig } from "../lib/ai/gateway-summary";
+import { setRuntimeGatewayEnvironment } from "../lib/ai/gateway-runtime";
 
 const US_URL = "https://www.supremecourt.gov/opinions/26pdf/26a476_k537.pdf";
 const US_ID = "d8dc4ebc-7193-4a2d-8bcf-21e9cbbe4127";
@@ -200,6 +202,95 @@ test("static guard: the approve-and-summarize branch consults protectedSourceReq
 const R2_BUCKET_OK: UsPrivateSummaryRawBucket = {
   async head() { return { size: 128 }; },
 };
+
+const P2_GATEWAY_CONFIG: GatewaySummaryConfig = {
+  ai: { async run() { throw new Error("Gateway must not be called directly by the private-case fixture"); } },
+  gatewayId: "default",
+  route: "gemini-flash-fallback",
+};
+
+test("P2 G4 gateway summarizes a verified official PDF with NO direct Gemini key and preserves private review hold", async (t) => {
+  const db = privateSummarySetup(t);
+  let calls = 0;
+  const result = await runD1PrivateUsSummary({
+    articleId: US_ID,
+    apiKeys: [],
+    gateway: P2_GATEWAY_CONFIG,
+    rawBucket: R2_BUCKET_OK,
+    summarize: async (_article, options) => {
+      calls++;
+      assert.equal(options?.gateway, P2_GATEWAY_CONFIG);
+      assert.equal(options?.model, undefined);
+      assert.equal(options?.allowProviderFallback, false);
+      return stubSummary({ aiMetadata: { provider: "cloudflare-ai-gateway", model: "gemini-3.1-flash-lite" } });
+    },
+  });
+  assert.equal(result.status, "summarized");
+  assert.equal(result.provider, "cloudflare-ai-gateway");
+  assert.equal(result.model, "gemini-3.1-flash-lite");
+  assert.equal(calls, 1);
+  const row = articleRow(db);
+  const metadata = JSON.parse(String(row.source_metadata)) as { collection: { publishable: boolean }; review: { required: boolean } };
+  assert.equal(metadata.collection.publishable, false);
+  assert.equal(metadata.review.required, true);
+  assert.equal(row.review_state, "needs_review");
+  assert.equal(db.rows("article_publications_p3").length, 0);
+  assert.equal(db.rows("e2e_approval_evidence_v1").length, 0);
+  assert.equal(db.rows("article_cache_outbox_p3").length, 0);
+});
+
+test("P2 G4 Gateway failure is retryable but retains the private hold with no public side effects", async (t) => {
+  const db = privateSummarySetup(t);
+  const result = await runD1PrivateUsSummary({
+    articleId: US_ID, apiKeys: [], gateway: P2_GATEWAY_CONFIG, rawBucket: R2_BUCKET_OK,
+    summarize: async () => { throw new Error("summary_gateway.request_failed 429"); },
+  });
+  assert.equal(result.status, "failed");
+  assert.equal(result.retryable, true);
+  const row = articleRow(db);
+  assert.equal(row.status, "metadata_only");
+  assert.equal(row.summary_json, null);
+  const metadata = JSON.parse(String(row.source_metadata)) as { collection: { publishable: boolean }; review: { required: boolean } };
+  assert.equal(metadata.collection.publishable, false);
+  assert.equal(metadata.review.required, true);
+  assert.equal(db.rows("article_publications_p3").length, 0);
+  assert.equal(db.rows("e2e_approval_evidence_v1").length, 0);
+});
+
+test("P2 G4 Gateway makes ZERO AI requests on unverified official PDF provenance", async (t) => {
+  const db = privateSummarySetup(t);
+  let calls = 0;
+  const outcome = await runD1PrivateUsSummary({
+    articleId: US_ID, apiKeys: [], gateway: P2_GATEWAY_CONFIG,
+    rawBucket: { async head() { return null; } },
+    summarize: async () => { calls++; return stubSummary(); },
+  });
+  assert.equal(outcome.status, "blocked");
+  assert.equal(calls, 0);
+  assert.equal(articleRow(db).status, "metadata_only");
+  assert.equal(db.rows("article_publications_p3").length, 0);
+});
+
+test("P2 G3 Gateway denies manual model pinning before enqueue and preserves the private US hold", async (t) => {
+  const db = privateSummarySetup(t);
+  setRuntimeGatewayEnvironment({ AI: P2_GATEWAY_CONFIG.ai, WORLDCONS_SUMMARY_BACKEND_G3: "cloudflare-ai-gateway" });
+  t.after(() => setRuntimeGatewayEnvironment(null));
+  const result = await runD1AdminReviewAction({
+    action: "resummarize-with-model",
+    articleId: US_ID,
+    slug: undefined,
+    model: "gemini-3.1-flash-lite",
+    provider: "gemini",
+    note: undefined,
+    expectedApprovalSnapshotHash: undefined,
+  }, "human-reviewer");
+  assert.equal(result.status, "unsupported_provider");
+  const row = articleRow(db);
+  assert.equal(row.status, "metadata_only");
+  assert.equal(row.summary_json, null);
+  assert.equal(db.rows("article_publications_p3").length, 0);
+  assert.equal(db.rows("e2e_approval_evidence_v1").length, 0);
+});
 
 /** A variety of stubbed SummaryJson values; production uses the real Gemini provider. */
 function stubSummary(overrides: Record<string, unknown> = {}) {

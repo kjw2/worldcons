@@ -80,7 +80,8 @@ import {
 import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
 import { runD1RefreshTagCounts, runD1SummarizeArticle, runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
 import { runD1PrivateUsSummary } from "@/lib/cloudflare/summary/us-private-summary";
-import { resolveP1GatewaySummary, type GatewaySummaryAiBinding } from "@/lib/ai/gateway-summary";
+import { resolveSummaryGateway, type GatewaySummaryAiBinding } from "@/lib/ai/gateway-summary";
+import { setRuntimeGatewayEnvironment } from "@/lib/ai/gateway-runtime";
 import { runD1PublishArticle, runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
 import { syncSearchProjectionForArticle } from "@/lib/cloudflare/search-projection/d1-sync";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
@@ -90,6 +91,10 @@ export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durabl
 interface WorldconsWorkerEnv {
   AI?: GatewaySummaryAiBinding;
   WORLDCONS_SUMMARY_BACKEND?: string;
+  WORLDCONS_SUMMARY_BACKEND_G1?: string;
+  WORLDCONS_SUMMARY_BACKEND_G2?: string;
+  WORLDCONS_SUMMARY_BACKEND_G3?: string;
+  WORLDCONS_SUMMARY_BACKEND_G4?: string;
   WORLDCONS_AI_GATEWAY_ID?: string;
   WORLDCONS_AI_GATEWAY_ROUTE?: string;
   WORLDCONS_RAW: ArtifactBlobR2Bucket;
@@ -167,6 +172,7 @@ export default {
       env as Record<string, string | undefined>,
     ) as WorldconsWorkerEnv;
     setRuntimePlatform("cloudflare-worker");
+    setRuntimeGatewayEnvironment(env);
     setRuntimeAuthEnvironment({
       ADMIN_USERNAME: env.ADMIN_USERNAME,
       ADMIN_PASSWORD: env.ADMIN_PASSWORD,
@@ -302,7 +308,7 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     return runD1PublicationDrain(input);
   }
 
-  async runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number; source?: "scheduled" }) {
+  async runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number; source?: "scheduled" | "admin" }) {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
@@ -315,7 +321,7 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
       .map((key) => key?.trim())
       .filter((key): key is string => Boolean(key));
-    const gateway = resolveP1GatewaySummary(env, input.source);
+    const gateway = resolveSummaryGateway(env, input.source);
     return runD1SummaryDrain({
       ...input,
       apiKeys,
@@ -327,7 +333,7 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     });
   }
 
-  async runSummaryArticle(input: { articleId?: string; slug?: string; model?: string; source?: "ingest" }) {
+  async runSummaryArticle(input: { articleId?: string; slug?: string; model?: string; source?: "ingest" | "admin"; requestedProvider?: "gemini" | "cloudflare-ai-gateway" }) {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
@@ -335,7 +341,8 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
     const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
       .map((key) => key?.trim()).filter((key): key is string => Boolean(key));
-    const gateway = resolveP1GatewaySummary(env, input.source);
+    const gateway = resolveSummaryGateway(env, input.source);
+    if (input.requestedProvider === "cloudflare-ai-gateway" && !gateway) throw new Error("summary_gateway.not_enabled");
     if (gateway && input.model) throw new Error("summary_gateway.model_override_forbidden");
     return runD1SummarizeArticle({
       ...input,
@@ -361,12 +368,14 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
     const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
       .map((key) => key?.trim()).filter((key): key is string => Boolean(key));
+    const gateway = resolveSummaryGateway(env, "us-private");
     // The caller cannot inject a provider model: this op uses only the operator's
     // pinned/default Gemini selection, exactly like `runSummaryArticle`.
     return runD1PrivateUsSummary({
       articleId: input.articleId,
       apiKeys,
-      model: env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
+      gateway,
+      model: gateway ? undefined : env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
       rawBucket: env.WORLDCONS_RAW,
     });
   }

@@ -11,18 +11,47 @@ export interface GatewaySummaryConfig {
   route: string;
 }
 
-/** Only P1 G1/G2 service calls may opt in. Default remains direct Gemini. */
-export function resolveP1GatewaySummary(
-  env: { AI?: GatewaySummaryAiBinding; WORLDCONS_SUMMARY_BACKEND?: string; WORLDCONS_AI_GATEWAY_ID?: string; WORLDCONS_AI_GATEWAY_ROUTE?: string },
-  source?: "ingest" | "scheduled",
+export type SummaryLane = "ingest" | "scheduled" | "admin" | "us-private";
+export type SummaryBackend = "direct-gemini" | "cloudflare-ai-gateway";
+export type GatewaySummaryEnv = {
+  AI?: GatewaySummaryAiBinding;
+  WORLDCONS_SUMMARY_BACKEND?: string;
+  WORLDCONS_SUMMARY_BACKEND_G1?: string;
+  WORLDCONS_SUMMARY_BACKEND_G2?: string;
+  WORLDCONS_SUMMARY_BACKEND_G3?: string;
+  WORLDCONS_SUMMARY_BACKEND_G4?: string;
+  WORLDCONS_AI_GATEWAY_ID?: string;
+  WORLDCONS_AI_GATEWAY_ROUTE?: string;
+};
+
+const laneFlags: Record<SummaryLane, keyof GatewaySummaryEnv> = {
+  ingest: "WORLDCONS_SUMMARY_BACKEND_G1",
+  scheduled: "WORLDCONS_SUMMARY_BACKEND_G2",
+  admin: "WORLDCONS_SUMMARY_BACKEND_G3",
+  "us-private": "WORLDCONS_SUMMARY_BACKEND_G4",
+};
+
+/** Read-only backend resolution; P4 may cut over each lane independently. */
+export function resolveSummaryBackend(env: GatewaySummaryEnv, lane: SummaryLane): SummaryBackend {
+  const backend = String(env[laneFlags[lane]] ?? "").trim() || env.WORLDCONS_SUMMARY_BACKEND?.trim() || "direct-gemini";
+  if (backend !== "direct-gemini" && backend !== "cloudflare-ai-gateway") throw new Error("summary_gateway.invalid_backend");
+  return backend;
+}
+
+/** No work without an explicit lane: avoids silently changing other LLM paths. */
+export function resolveSummaryGateway(
+  env: GatewaySummaryEnv,
+  source?: SummaryLane,
 ): GatewaySummaryConfig | undefined {
-  if (source !== "ingest" && source !== "scheduled") return undefined;
-  const backend = env.WORLDCONS_SUMMARY_BACKEND?.trim() || "direct-gemini";
+  if (!source) return undefined;
+  const backend = resolveSummaryBackend(env, source);
   if (backend === "direct-gemini") return undefined;
-  if (backend !== "cloudflare-ai-gateway") throw new Error("summary_gateway.invalid_backend");
   if (!env.AI) throw new Error("summary_gateway.binding_missing");
   return { ai: env.AI, gatewayId: env.WORLDCONS_AI_GATEWAY_ID?.trim() || "default", route: env.WORLDCONS_AI_GATEWAY_ROUTE?.trim() || "gemini-flash-fallback" };
 }
+
+/** Keep the existing P1 test/API contract while promoting the shared resolver. */
+export const resolveP1GatewaySummary = resolveSummaryGateway;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

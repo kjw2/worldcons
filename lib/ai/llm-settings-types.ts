@@ -36,6 +36,32 @@ export interface AdminLlmSettingsView {
   summary: LlmSummarySettingsView;
   providers: Record<ConfigurableLlmProvider, LlmProviderSettingsView>;
   generatedAt: string;
+  gateway: GatewayAdminStatusView;
+}
+
+export interface GatewayTestStatus {
+  status: "ok" | "failed";
+  checkedAt: string;
+  gatewayId: string;
+  route: string;
+  model?: string;
+  durationMs: number;
+  requestId?: string;
+  errorCode?: string;
+}
+
+export interface GatewayAdminStatusView {
+  backend: "cloudflare-ai-gateway";
+  gatewayId: string;
+  route: string;
+  bindingAvailable: boolean;
+  laneBackends: {
+    G1: "direct-gemini" | "cloudflare-ai-gateway";
+    G2: "direct-gemini" | "cloudflare-ai-gateway";
+    G3: "direct-gemini" | "cloudflare-ai-gateway";
+    G4: "direct-gemini" | "cloudflare-ai-gateway";
+  };
+  lastTest?: GatewayTestStatus;
 }
 
 export interface LlmKeyInput {

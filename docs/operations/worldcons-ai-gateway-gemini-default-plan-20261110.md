@@ -1,8 +1,8 @@
 # WorldCons AI Gateway migration — Gemini dynamic routing by default
 
 Date: 2026-11-10
-Status: **Plan approved by owner; implementation and production traffic cutover NOT performed.**
-Priority: P0 authentication and routing contract; P1 shared adapter; P2 administration; P3 staged validation and production cutover.
+Status: **P0 live Gateway smoke check passed; P1 G1/G2 and P2 G3/G4 adapters implemented and tested locally. Production Worker traffic cutover NOT performed.**
+Priority: P0 authentication and routing contract; P1 shared adapter; P2 administration; P3 staged validation; P4 controlled production cutover.
 
 ## 1. Binding decision and current verified state
 
@@ -13,11 +13,11 @@ On 2026-11-10 the Cloudflare MCP API updated the account's sole existing AI Gate
 Verified deployed `gemini-flash-fallback` nodes, each timeout **20,000 ms** and `retries: 0`:
 
 1. `custom-gemini-openai/gemini-3.8-flash`
-2. `custom-gemini-openai/gemini-3.7-flash`
-3. `custom-gemini-openai/gemini-3.6-flash`
-4. `custom-gemini-openai/gemini-3.5-flash-lite`
+2. `custom-gemini-openai/gemini-3.6-flash`
+3. `custom-gemini-openai/gemini-3.5-flash-lite`
+4. `custom-gemini-openai/gemini-3.1-flash-lite`
 
-This is a live *route configuration*, not proof all four nodes work. Before cutover, run authenticated read-only model and fallback probes. The `default` gateway currently has five stored provider keys, including `gemini-openai` under the `default` alias, but key registration alone does not prove successful inference. Existing unrelated Gateway route configurations must not be changed.
+Verified active route version `68dfaf5b-e13d-4467-969c-7a99f02351fd` with BYOK-only enabled and Gateway authentication on. Individual model calls may be unavailable (the P0 pass criterion is successful JSON from at least one of the ordered fallback nodes). Keep model ordering exclusively in Gateway, not in Worker source. Existing unrelated Gateway route configurations must not be changed.
 
 ## 2. Existing WorldCons code, identified change sites
 
@@ -89,7 +89,16 @@ Use Cloudflare's existing gateway authentication and provider credentials. Do no
 | **P3: Four-path staged quality and safety** | Exercise **G1, G2, G3, G4 separately** using held-out full-text decisions across Spain/France/Germany/US; compare current Gemini results; test unavailable source, invalid JSON, provider outage, timeout and repeated job | Test receipts for **each of four paths** recording requested route and actual model, text/case/date provenance and summary parity; metadata-only makes zero AI requests; G4 remains private; no unauthorized publication or P3 mutation |
 | **P4: Controlled four-path cutover** | Roll out flags per path G1→G2→G3→G4 while monitoring errors, latency, models, actual BYOK provider charges, token use, approval and Search verification; keep all paths on Gemini dynamic route | Four positive live workflow receipts plus negative fail-closed cases; existing E2E publication/search invariants verified, each lane has reversible direct-Gemini rollback, no half-migrated path |
 
-### 4.1 Definition of done for four paths
+### 4.1 Current P1/P2 implementation (2026-11-11)
+
+- Local branch `feat/worldcons-ai-gateway-p2` contains P1 baseline `7b5dee3` and P2 code (not yet a live Worker deploy).
+- Main Worker `AI` binding is configured, and the backend remains **`direct-gemini`** for all four lanes until explicit P4 cutover.
+- Per-lane reversible Worker settings: `WORLDCONS_SUMMARY_BACKEND_G1` (incremental), `_G2` (scheduled/backfill), `_G3` (admin retries/batch), `_G4` (US private) accept `direct-gemini` or `cloudflare-ai-gateway`. They independently override the global `WORLDCONS_SUMMARY_BACKEND`.
+- G3 admin retry uses the existing authenticated, audited job queue; the dynamic route refuses forced model overrides. G4 retains official-PDF/R2 verification, private review hold, immutable approval and publication guards.
+- `/admin/llm` shows read-only route, four lane flags, last test result and actual returned model; an authenticated, CSRF-protected test performs a **real API call** only when explicitly clicked. Only sanitized test metadata is stored in the existing `worldcons_ops.llm_settings` document.
+- Local integration tests, TypeScript, Vinext build and Wrangler dry-run validate wiring; P3 held-out full-document live quality tests and P4 Worker cutover remain **unperformed**.
+
+### 4.2 Definition of done for four paths
 
 - [ ] **G1** incremental per-article: official full text → dynamic Gemini summary → persisted translation → guarded E2E publication/search; missing text → no model call.
 - [ ] **G2** backlog/batch: multiple eligible old/new Core articles → dynamic Gemini with bounded claims and retries; source-only case-catalog backfill never makes an implicit model request.
@@ -105,6 +114,6 @@ Gateway route changes need explicit **version deploy**; simply editing route con
 - Backend selection is a reversible feature flag; rollback points at existing direct-Gemini adapter while leaving protected publication/search D1 states unchanged.
 - BYOK-only remains **on**, even during rollback. Reverting WorldCons's LLM backend must **not** disable global gateway BYOK policy or change WorldCase routes.
 - No separate WorldCons Gateway is required for the initial cutover. If a dedicated Gateway is proposed later, BYOK-only and credential isolation must be verified independently before deployment.
-- This document is a **plan**. It does not claim the dynamic route was smoke-tested for WorldCons, code was migrated, or production WorldCons LLM traffic was cut over.
+- **P0** Gateway smoke checks succeeded with at least one valid JSON response; **P1/P2** have local implementation/test evidence. This document does **not** claim a deployed WorldCons Worker, successful live full-document G1–G4 traffic, or a P4 production cutover.
 
 Official references: [Dynamic routing](https://developers.cloudflare.com/ai-gateway/features/routing/dynamic-routing/), [Workers AI Gateway binding](https://developers.cloudflare.com/ai-gateway/usage/worker-binding-methods/), [BYOK and credential precedence](https://developers.cloudflare.com/ai-gateway/features/unified-billing/), [Gateway logging](https://developers.cloudflare.com/ai-gateway/observability/logging/).

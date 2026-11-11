@@ -24,6 +24,10 @@
   },
   "vars": {
     "WORLDCONS_SUMMARY_BACKEND": "direct-gemini",
+    "WORLDCONS_SUMMARY_BACKEND_G1": "direct-gemini",
+    "WORLDCONS_SUMMARY_BACKEND_G2": "direct-gemini",
+    "WORLDCONS_SUMMARY_BACKEND_G3": "direct-gemini",
+    "WORLDCONS_SUMMARY_BACKEND_G4": "direct-gemini",
     "WORLDCONS_AI_GATEWAY_ID": "default",
     "WORLDCONS_AI_GATEWAY_ROUTE": "gemini-flash-fallback",
     "APP_BASE_URL": "https://worldcons.cclib.workers.dev",

@@ -12,8 +12,8 @@ import { NATIVE_CRAWLER_SOURCES, runNativeSourceCollection, type NativeCrawlerBi
 const NATIVE_ADMIN_JOB_TYPES = ["ingest", "ingest-and-summarize", "summarize", "retry-summary", "refresh-tags"] as const;
 
 interface AdminJobAppService {
-  runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number }): Promise<unknown>;
-  runSummaryArticle(input: { articleId?: string; slug?: string; model?: string }): Promise<unknown>;
+  runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number; source?: "admin" }): Promise<unknown>;
+  runSummaryArticle(input: { articleId?: string; slug?: string; model?: string; source?: "admin"; requestedProvider?: "gemini" | "cloudflare-ai-gateway" }): Promise<unknown>;
   runRefreshTagCounts(): Promise<unknown>;
 }
 
@@ -29,6 +29,19 @@ function integer(value: unknown, fallback: number, min: number, max: number) {
 function sourceFor(job: AdminJobRecord): NativeCrawlerSource | null {
   const candidate = job.sourceKey ?? (typeof job.options.sourceKey === "string" ? job.options.sourceKey : null);
   return candidate && NATIVE_CRAWLER_SOURCES.includes(candidate as NativeCrawlerSource) ? candidate as NativeCrawlerSource : null;
+}
+
+/** Pure, auditable G3 dispatch contract. The Worker enforces the active lane flag. */
+export function resolveNativeAdminSummaryRequest(job: Pick<AdminJobRecord, "options" | "articleId" | "articleSlug">) {
+  const provider = typeof job.options.provider === "string" ? job.options.provider : "gemini";
+  if (provider !== "gemini" && provider !== "cloudflare-ai-gateway") throw new Error("admin_job.unsupported_summary_provider");
+  return {
+    articleId: job.articleId ?? (typeof job.options.articleId === "string" ? job.options.articleId : undefined),
+    slug: job.articleSlug ?? (typeof job.options.slug === "string" ? job.options.slug : undefined),
+    model: typeof job.options.model === "string" ? job.options.model : undefined,
+    source: "admin" as const,
+    requestedProvider: provider as "gemini" | "cloudflare-ai-gateway",
+  };
 }
 
 async function event(jobId: string, eventType: string, message: string, metadata: Record<string, unknown> = {}) {
@@ -75,15 +88,10 @@ async function executeJob(
   }
 
   if (job.jobType === "retry-summary") {
-    const provider = typeof job.options.provider === "string" ? job.options.provider : "gemini";
-    if (provider !== "gemini") throw new Error("admin_job.unsupported_summary_provider");
-    summarize = await env.WORLDCONS_APP_SERVICE.runSummaryArticle({
-      articleId: job.articleId ?? (typeof job.options.articleId === "string" ? job.options.articleId : undefined),
-      slug: job.articleSlug ?? (typeof job.options.slug === "string" ? job.options.slug : undefined),
-      model: typeof job.options.model === "string" ? job.options.model : undefined,
-    });
+    summarize = await env.WORLDCONS_APP_SERVICE.runSummaryArticle(resolveNativeAdminSummaryRequest(job));
   } else if (job.jobType === "summarize" || job.jobType === "ingest-and-summarize") {
     summarize = await env.WORLDCONS_APP_SERVICE.runSummaryDrain({
+      source: "admin",
       limit: summarizeLimit,
       maxPasses: 6,
       sourceKey: source ?? undefined,

@@ -42,6 +42,7 @@
 import type { ArticleContentType, SummaryJson } from "@/lib/db/types";
 import { getRuntimeD1Binding, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
 import { summarizeArticle } from "@/lib/ai/summarize";
+import type { GatewaySummaryConfig } from "@/lib/ai/gateway-summary";
 import { SummarySchema } from "@/lib/ai/schema";
 import { transitionArticleLifecycleInD1 } from "@/lib/cloudflare/core-write/authority";
 import {
@@ -473,6 +474,7 @@ export async function runD1PrivateUsSummary(input: {
   articleId: string;
   apiKeys: string[];
   model?: string;
+  gateway?: GatewaySummaryConfig;
   summarize?: typeof summarizeArticle;
   rawBucket?: UsPrivateSummaryRawBucket;
   now?: string;
@@ -529,7 +531,7 @@ export async function runD1PrivateUsSummary(input: {
   if (await hasApprovalReceipt(db, articleId)) return blocked(articleId, "us_private_summary.human_receipt_preexisting");
 
   const keys = input.apiKeys.map((key) => key.trim()).filter(Boolean);
-  if (keys.length === 0) return blocked(articleId, "us_private_summary.api_key_missing");
+  if (keys.length === 0 && !input.gateway) return blocked(articleId, "us_private_summary.api_key_missing");
 
   const claim = await claimUsPrivateSummary(db, row);
 
@@ -550,21 +552,24 @@ export async function runD1PrivateUsSummary(input: {
         cleanedText: row.cleaned_text ?? undefined,
         metadata,
       },
-      {
-        provider: "gemini",
-        model: input.model,
-        providerApiKeys: { gemini: keys },
-        allowProviderFallback: true,
-      },
+      input.gateway
+        ? { gateway: input.gateway, allowProviderFallback: false }
+        : { provider: "gemini", model: input.model, providerApiKeys: { gemini: keys }, allowProviderFallback: true },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const retryable = /quota|429|rate.?limit|timeout|temporar|network|unavailable| 5\d\d\b/i.test(message);
+    const retryable = /quota|429|rate.?limit|timeout|temporar|network|unavailable| 5\d\d\b/i.test(message)
+      || /^summary_gateway\.(?:empty_response|request_failed(?:$| (?:408|429|5\d\d)\b))/.test(message);
     const errorClass = retryable ? "summary.retryable_quota" : "summary.model_error";
     try {
       await rollbackUsPrivateSummary(db, row, claim, {
         errorClass,
-        errorContext: { message, retryable, requestedProvider: "gemini", requestedModel: input.model ?? null },
+        errorContext: {
+          message,
+          retryable,
+          requestedProvider: input.gateway ? "cloudflare-ai-gateway" : "gemini",
+          requestedModel: input.gateway ? `dynamic/${input.gateway.route}` : input.model ?? null,
+        },
         retryable,
         originalTranslationStatus: row.translation_status,
       });
@@ -587,8 +592,8 @@ export async function runD1PrivateUsSummary(input: {
   return {
     status: persisted.disposition === "written" ? "summarized" : "already_summarized",
     articleId,
-    provider: summary.aiMetadata?.provider ?? "gemini",
-    model: summary.aiMetadata?.model ?? input.model ?? null,
+    provider: summary.aiMetadata?.provider ?? (input.gateway ? "cloudflare-ai-gateway" : "gemini"),
+    model: summary.aiMetadata?.model ?? (input.gateway ? null : input.model ?? null),
     lifecycleSynced,
     publicationUntouched: true,
     searchUntouched: true,

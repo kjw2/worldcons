@@ -9,6 +9,7 @@ import {
   type ConfigurableLlmProvider,
   type LlmKeyView,
   type LlmProviderSettingsView,
+  type GatewayTestStatus,
 } from "@/lib/ai/llm-settings-types";
 
 type KeyForm = LlmKeyView & {
@@ -41,6 +42,9 @@ type LlmTestResponse = {
     provider?: string;
     model?: string | null;
     durationMs?: number;
+    gatewayId?: string;
+    route?: string;
+    requestId?: string | null;
   };
 };
 
@@ -141,6 +145,8 @@ export function AdminLlmSettingsPanel({
   const [testPending, setTestPending] = useState(false);
   const [testMessage, setTestMessage] = useState<string | null>(null);
   const [testIsError, setTestIsError] = useState(false);
+  const [gatewayTest, setGatewayTest] = useState<GatewayTestStatus | undefined>(initialSettings.gateway.lastTest);
+  const [gatewayTestPending, setGatewayTestPending] = useState(false);
 
   const activeSummaryProvider = form.providers[form.summary.provider];
   const activeSavedProvider = settings.providers[form.summary.provider];
@@ -148,6 +154,7 @@ export function AdminLlmSettingsPanel({
   const activeDbKeyCount = savedDatabaseKeyCount(activeSavedProvider);
   const canSave = settings.storageAvailable && settings.encryptionReady && !pending && !testPending;
   const canRunTest = !pending && !testPending && Boolean(activeModel.trim());
+  const canRunGatewayTest = settings.gateway.bindingAvailable && !pending && !gatewayTestPending && !testPending;
   const providerOptions = useMemo(() => LLM_PROVIDER_IDS.map((provider) => ({ provider, label: PROVIDER_LABELS[provider] })), []);
 
   function updateProvider(provider: ConfigurableLlmProvider, patch: Partial<ProviderForm>) {
@@ -253,8 +260,87 @@ export function AdminLlmSettingsPanel({
     }
   }
 
+  async function testGateway() {
+    if (!canRunGatewayTest) return;
+    setGatewayTestPending(true);
+    const startedAt = Date.now();
+    try {
+      const response = await fetch("/api/admin/llm-settings/test", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+        body: JSON.stringify({ provider: "cloudflare-ai-gateway" }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as LlmTestResponse;
+      if (!response.ok || payload.test?.status !== "ok" || !payload.test.model) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      setGatewayTest({
+        status: "ok",
+        checkedAt: new Date().toISOString(),
+        gatewayId: payload.test.gatewayId || settings.gateway.gatewayId,
+        route: payload.test.route || settings.gateway.route,
+        model: payload.test.model,
+        durationMs: payload.test.durationMs ?? Date.now() - startedAt,
+        ...(payload.test.requestId ? { requestId: payload.test.requestId } : {}),
+      });
+    } catch (error) {
+      setGatewayTest({
+        status: "failed",
+        checkedAt: new Date().toISOString(),
+        gatewayId: settings.gateway.gatewayId,
+        route: settings.gateway.route,
+        durationMs: Date.now() - startedAt,
+        errorCode: error instanceof Error ? error.message : "Gateway 호출 실패",
+      });
+    } finally {
+      setGatewayTestPending(false);
+    }
+  }
+
   return (
     <div className="grid gap-6">
+      <section className="rounded-md border border-rule bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-court">Cloudflare AI Gateway</p>
+            <h2 className="mt-1 text-xl font-semibold text-ink">동적 요약 라우트</h2>
+            <p className="mt-2 text-sm text-ink/65">운영 플래그로 제어되는 읽기 전용 상태입니다. 이 화면에서 모델 순서나 BYOK 키를 변경하지 않습니다.</p>
+          </div>
+          <button
+            type="button"
+            onClick={testGateway}
+            disabled={!canRunGatewayTest}
+            className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-rule bg-white px-4 text-sm font-semibold text-ink hover:bg-parchment disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {gatewayTestPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Server className="size-4" aria-hidden="true" />}
+            {gatewayTestPending ? "Gateway 시험 중" : "실제 연결 테스트"}
+          </button>
+        </div>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+          <div><dt className="text-ink/55">Gateway ID</dt><dd className="mt-1 font-semibold text-ink">{settings.gateway.gatewayId}</dd></div>
+          <div><dt className="text-ink/55">동적 라우트</dt><dd className="mt-1 break-all font-semibold text-ink">{settings.gateway.route}</dd></div>
+          <div><dt className="text-ink/55">Worker AI 바인딩</dt><dd className="mt-1 font-semibold text-ink">{settings.gateway.bindingAvailable ? "설정됨" : "없음 · 연결 시험 불가"}</dd></div>
+          <div><dt className="text-ink/55">모델 선택</dt><dd className="mt-1 font-semibold text-ink">Gateway 폴백 체인에서 자동 선택</dd></div>
+        </dl>
+        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          {(["G1", "G2", "G3", "G4"] as const).map((lane) => (
+            <span key={lane} className="rounded-md border border-rule bg-parchment px-3 py-2 font-semibold text-ink/75">
+              {lane} · {settings.gateway.laneBackends[lane] === "cloudflare-ai-gateway" ? "Gateway" : "직접 Gemini"}
+            </span>
+          ))}
+        </div>
+        <div className="mt-3 rounded-md border border-rule bg-parchment/45 p-3 text-sm text-ink/70">
+          {gatewayTest ? (
+            <>
+              <div className="font-semibold">{gatewayTest.status === "ok" ? "최근 연결 시험 성공" : "최근 연결 시험 실패"}</div>
+              <p className="mt-1">검사 시각: {gatewayTest.checkedAt} · {gatewayTest.durationMs}ms</p>
+              <p className="mt-1 break-words">실제 응답 모델: {gatewayTest.model || "확인되지 않음"}</p>
+              {gatewayTest.errorCode ? <p className="mt-1 break-all text-court">{gatewayTest.errorCode}</p> : null}
+            </>
+          ) : "저장된 Gateway 연결 시험 기록이 없습니다. 검사는 실제 API 호출 1회를 수행하며 모델별 이용 한도를 사용할 수 있습니다."}
+        </div>
+      </section>
       <section className="rounded-md border border-rule bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>

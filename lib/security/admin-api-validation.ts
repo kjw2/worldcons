@@ -109,7 +109,7 @@ const adminReviewBodySchema = z
     articleId: optionalText(ADMIN_REF_MAX_LENGTH),
     slug: optionalText(ADMIN_REF_MAX_LENGTH),
     note: optionalText(ADMIN_NOTE_MAX_LENGTH),
-    provider: z.enum(LLM_PROVIDER_IDS).optional(),
+    provider: z.enum([...LLM_PROVIDER_IDS, "cloudflare-ai-gateway"] as const).optional(),
     model: optionalText(ADMIN_MODEL_MAX_LENGTH),
     confirmation: optionalText(ADMIN_REF_MAX_LENGTH),
     expectedApprovalSnapshotHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -293,7 +293,7 @@ const adminLlmSettingsSchema = z
 
 const adminLlmTestSchema = z
   .object({
-    provider: z.enum(LLM_PROVIDER_IDS),
+    provider: z.enum([...LLM_PROVIDER_IDS, "cloudflare-ai-gateway"] as const),
     model: optionalText(ADMIN_LLM_MODEL_MAX_LENGTH),
   })
   .strict();

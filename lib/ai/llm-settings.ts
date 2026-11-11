@@ -1,5 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { getRuntimeGatewayEnvironment } from "@/lib/ai/gateway-runtime";
+import { resolveSummaryBackend } from "@/lib/ai/gateway-summary";
 import {
   LLM_PROVIDER_IDS,
   type AdminLlmSettingsInput,
@@ -7,6 +9,8 @@ import {
   type ConfigurableLlmProvider,
   type LlmKeyInput,
   type LlmProviderSettingsView,
+  type GatewayTestStatus,
+  type GatewayAdminStatusView,
 } from "@/lib/ai/llm-settings-types";
 
 interface StoredLlmKey {
@@ -28,6 +32,7 @@ interface StoredProviderSettings {
 
 interface StoredLlmSettings {
   version: 1;
+  gatewayHealth?: GatewayTestStatus;
   summary?: {
     provider?: ConfigurableLlmProvider;
     model?: string;
@@ -216,12 +221,47 @@ function mergeStoredSettings(settings?: StoredLlmSettings | null): StoredLlmSett
   const summaryProvider: ConfigurableLlmProvider = isProvider(incoming.summary?.provider) ? incoming.summary.provider : defaults.summary?.provider ?? "openai";
   return {
     version: 1,
+    ...(incoming.gatewayHealth ? { gatewayHealth: incoming.gatewayHealth } : {}),
     summary: {
       provider: summaryProvider,
       model: boundedText(incoming.summary?.model, providers[summaryProvider]?.defaultModel || DEFAULT_MODELS[summaryProvider], 160),
     },
     providers,
   };
+}
+
+/** Read-only operator view. The actual backend is controlled by Worker flags, not D1 settings. */
+export function gatewayAdminStatusView(lastTest?: GatewayTestStatus): GatewayAdminStatusView {
+  const env = getRuntimeGatewayEnvironment();
+  return {
+    backend: "cloudflare-ai-gateway",
+    gatewayId: env.WORLDCONS_AI_GATEWAY_ID?.trim() || "default",
+    route: `dynamic/${env.WORLDCONS_AI_GATEWAY_ROUTE?.trim() || "gemini-flash-fallback"}`,
+    bindingAvailable: Boolean(env.AI),
+    laneBackends: {
+      G1: resolveSummaryBackend(env, "ingest"),
+      G2: resolveSummaryBackend(env, "scheduled"),
+      G3: resolveSummaryBackend(env, "admin"),
+      G4: resolveSummaryBackend(env, "us-private"),
+    },
+    ...(lastTest ? { lastTest } : {}),
+  };
+}
+
+/** Only health metadata, never BYOK credentials or raw judicial text, enters D1. */
+export async function recordGatewayTestStatus(test: GatewayTestStatus): Promise<void> {
+  const binding = getRuntimeD1Binding("worldcons_ops");
+  if (!binding?.prepare) return;
+  const timestamp = new Date().toISOString();
+  const serialized = JSON.stringify(test);
+  const initial = JSON.stringify({ version: 1, gatewayHealth: test });
+  const statement = binding.prepare(
+    "INSERT INTO llm_settings (id,settings,created_at,updated_at) VALUES (?,?,?,?) " +
+    "ON CONFLICT(id) DO UPDATE SET settings=json_set(COALESCE(llm_settings.settings,'{}'),'$.gatewayHealth',json(?)),updated_at=excluded.updated_at",
+  ).bind(SETTINGS_ID, initial, timestamp, timestamp, serialized);
+  if (!statement.run) throw new Error("llm_settings.gateway_health_write_unavailable");
+  const result = await statement.run();
+  if (result.success === false || result.error) throw new Error("llm_settings.gateway_health_write_failed");
 }
 
 async function readStoredSettings() {
@@ -302,6 +342,7 @@ export async function getAdminLlmSettingsView(): Promise<AdminLlmSettingsView> {
       LLM_PROVIDER_IDS.map((provider) => [provider, providerView(provider, settings.providers?.[provider] ?? defaultProviderSettings(provider))]),
     ) as Record<ConfigurableLlmProvider, LlmProviderSettingsView>,
     generatedAt: new Date().toISOString(),
+    gateway: gatewayAdminStatusView(settings.gatewayHealth),
   };
 }
 
@@ -367,6 +408,7 @@ export async function saveAdminLlmSettings(input: AdminLlmSettingsInput) {
   const summaryProvider = isProvider(input.summary?.provider) ? input.summary.provider : current.summary?.provider ?? "openai";
   const nextSettings: StoredLlmSettings = {
     version: 1,
+    ...(current.gatewayHealth ? { gatewayHealth: current.gatewayHealth } : {}),
     summary: {
       provider: summaryProvider,
       model: boundedText(input.summary?.model, providers[summaryProvider]?.defaultModel || DEFAULT_MODELS[summaryProvider], 160),
