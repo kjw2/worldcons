@@ -62,7 +62,10 @@ test("Gateway uses only the four-node dynamic route; no direct provider key or m
   assert.deepEqual(calls, [{
     model: "dynamic/gemini-flash-fallback",
     input: { messages, max_tokens: 8192 },
-    options: { gateway: { id: "default", skipCache: true } },
+    options: {
+      gateway: { id: "default", skipCache: true },
+      extraHeaders: { "cf-aig-collect-log-payload": "false" },
+    },
   }]);
   assert.equal(JSON.stringify(calls).includes("AIza"), false);
 });
@@ -81,7 +84,7 @@ test("Gateway validates JSON and fails closed without hidden vendor fallbacks", 
       completeGatewaySummaryJson(messages, { ai: fakeBinding(response, calls), gatewayId: "default", route: "gemini-flash-fallback" }),
       expected,
     );
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, expected.test("summary_gateway.invalid_json") ? 2 : 1);
   }
 });
 
@@ -125,11 +128,13 @@ test("P1 preserves existing SummarySchema and actual-model provenance metadata",
   assert.equal(calls.length, 1);
 });
 
-test("Malformed JSON fails closed without an uncontrolled cross-provider retry", async () => {
+test("Malformed JSON is repaired exactly once on the SAME Gateway dynamic route", async () => {
   let calls = 0;
+  const routed: string[] = [];
   const ai: GatewaySummaryAiBinding = {
-    async run() {
+    async run(model) {
       calls += 1;
+      routed.push(model);
       return { model: "gemini-3.6-flash", choices: [{ message: { content: calls === 1 ? "invalid JSON" : JSON.stringify(goodSummary) } }] };
     },
   };
@@ -143,6 +148,22 @@ test("Malformed JSON fails closed without an uncontrolled cross-provider retry",
     originalLanguage: "de",
     cleanedText: "Official decision ".repeat(40),
   };
-  await assert.rejects(summarizeArticle(article, { gateway: { ai, gatewayId: "default", route: "gemini-flash-fallback" } }), /summary_gateway.invalid_json/);
-  assert.equal(calls, 1, "malformed Gateway output must fail closed, not invoke another provider");
+  const repaired = await summarizeArticle(article, { gateway: { ai, gatewayId: "default", route: "gemini-flash-fallback" } });
+  assert.equal(repaired.koreanTitle, goodSummary.koreanTitle);
+  assert.equal(repaired.aiMetadata?.model, "gemini-3.6-flash");
+  assert.equal(calls, 2, "at most one in-route correction");
+  assert.deepEqual(routed, ["dynamic/gemini-flash-fallback", "dynamic/gemini-flash-fallback"]);
+});
+
+test("Gateway accepts a single fenced JSON object without an extra paid request", async () => {
+  let calls = 0;
+  const ai: GatewaySummaryAiBinding = {
+    async run() {
+      calls++;
+      return { model: "gemini-3.5-flash-lite", choices: [{ message: { content: "```json\n{}\n```" } }] };
+    },
+  };
+  const result = await completeGatewaySummaryJson(messages, { ai, gatewayId: "default", route: "gemini-flash-fallback" });
+  assert.equal(result.content, "{}");
+  assert.equal(calls, 1);
 });

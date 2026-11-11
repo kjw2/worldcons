@@ -48,12 +48,18 @@ function attachAiMetadata(summary: SummaryJson, completion: LlmCompletionResult)
 
 function finalizeSummary(summary: SummaryJson, article: NormalizedArticle, completion: LlmCompletionResult) {
   const canonicalSummary = canonicalizeTerminologyValue(attachAiMetadata(summary, completion), article.sourceKey);
-  return ensureJudicialComplaintTags(canonicalSummary, {
+  const finalized = ensureJudicialComplaintTags(canonicalSummary, {
     sourceKey: article.sourceKey,
     canonicalUrl: article.canonicalUrl,
     cleanedText: article.cleanedText,
     sourceMetadata: article.metadata,
   });
+  // A model may paraphrase the official French multi-line title or case number.
+  // Gateway output must never overwrite the trusted original title from source.
+  if (completion.provider === "cloudflare-ai-gateway" && article.originalTitle?.trim()) {
+    return { ...finalized, originalTitle: article.originalTitle };
+  }
+  return finalized;
 }
 
 export async function summarizeArticle(article: NormalizedArticle, options: LlmCompletionOptions = {}): Promise<SummaryJson> {

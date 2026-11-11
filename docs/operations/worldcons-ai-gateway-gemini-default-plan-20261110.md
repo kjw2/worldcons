@@ -98,6 +98,7 @@ Use Cloudflare's existing gateway authentication and provider credentials. Do no
 - `/admin/llm` shows read-only route, four lane flags, last test result and actual returned model; an authenticated, CSRF-protected test performs a **real API call** only when explicitly clicked. Only sanitized test metadata is stored in the existing `worldcons_ops.llm_settings` document.
 - Local integration tests, TypeScript, Vinext build and Wrangler dry-run validate wiring; the *exact deployed Worker four-lane P3 E2E and human legal-quality comparison*, and P4 Worker cutover remain **unperformed**.
 - P3 read-only live full-text calls across Germany, Spain, France and the US returned 4/4 valid field-shape JSON responses, with BYOK-only confirmed. These are standalone Gateway calls, not deployed Worker lane E2E or signed-off legal-quality comparison. See `worldcons-ai-gateway-p3-verification-20261111.md`. The P4 gate remains closed.
+- P3 follow-up: a disposable, authenticated, remote Cloudflare Worker successfully ran the actual common `summarizeArticle` adapter with full original texts and Zod validation for nominal lanes G1–G4 (4/4), with no D1/R2/Search bindings. JSON repair, Gateway payload-log suppression and original-title anchoring were fixed after live findings. An unsupported German “child/asylum” phrase was detected in one otherwise schema-valid summary, so legal fact review and true durable four-workflow E2E still block cutover. See `worldcons-ai-gateway-p3-native-worker-20261111.md`.
 
 ### 4.2 Definition of done for four paths
 

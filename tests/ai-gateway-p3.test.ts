@@ -127,6 +127,7 @@ test("P3 all four isolated Worker summary lanes use the same dynamic route and p
         assert.equal(model, fixture.route);
         assert.equal(options.gateway.id, fixture.gatewayId);
         assert.equal(options.gateway.skipCache, true);
+        assert.equal(options.extraHeaders?.["cf-aig-collect-log-payload"], "false");
         const userPrompt = input.messages.find((m) => m.role === "user")?.content || "";
         assert.ok(userPrompt.includes(sourceText), "must not truncate staged full-text fixture");
         assert.ok(userPrompt.includes(receipt.officialUrl));
@@ -197,7 +198,33 @@ test("P3 Gateway model outage, timeout and invalid response fail closed with no 
   await assert.rejects(completeJsonWithMetadata([{ role: "user", content: "test" }], {
     gateway: { ai, gatewayId: "default", route: "gemini-flash-fallback" },
   }), /summary_gateway.invalid_json/);
-  assert.equal(calls, 1);
+  assert.equal(calls, 2, "invalid JSON gets exactly one same-route repair, not a provider fallback");
+});
+
+test("P3 Gateway output cannot rewrite original multi-line decision identity", async () => {
+  const originalTitle = "Décision n° 2026-1230/1231 QPC du 23 octobre 2026\nAssociation des employeurs\nNon conformité totale";
+  const ai: GatewaySummaryAiBinding = {
+    async run() {
+      return {
+        model: "gemini-3.5-flash-lite",
+        choices: [{ message: { content: JSON.stringify({ ...validSummary, originalTitle: "2026 QPC summary (shortened)" }) } }],
+      };
+    },
+  };
+  const summary = await summarizeArticle({
+    sourceKey: "fr-conseil-constitutionnel",
+    jurisdiction: "France",
+    institutionName: "Conseil constitutionnel",
+    contentType: "opinion",
+    originalLanguage: "fr",
+    originalTitle,
+    originalPublishedAt: "2026-10-23",
+    originalUrl: "https://www.conseil-constitutionnel.fr/decision/2026/20261230_1231QPC.htm",
+    canonicalUrl: "https://www.conseil-constitutionnel.fr/decision/2026/20261230_1231QPC.htm",
+    cleanedText: "Décision du Conseil constitutionnel ".repeat(90),
+  }, { gateway: { ai, gatewayId: "default", route: "gemini-flash-fallback" } });
+  assert.equal(summary.originalTitle, originalTitle);
+  assert.equal(summary.aiMetadata?.provider, "cloudflare-ai-gateway");
 });
 
 test("P3 safety tests keep authenticated admin mutation and US private approval behind separate gates", () => {

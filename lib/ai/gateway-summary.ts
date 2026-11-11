@@ -1,8 +1,12 @@
 import type { LlmMessage, LlmCompletionResult } from "@/lib/ai/client";
+import { buildRepairPrompt, SUMMARY_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 /** Native Workers AI binding. The Gateway owns model selection and BYOK credentials. */
 export interface GatewaySummaryAiBinding {
-  run(model: string, input: { messages: LlmMessage[]; max_tokens: number }, options: { gateway: { id: string; skipCache: boolean } }): Promise<unknown>;
+  run(model: string, input: { messages: LlmMessage[]; max_tokens: number }, options: {
+    gateway: { id: string; skipCache: boolean };
+    extraHeaders?: Record<string, string>;
+  }): Promise<unknown>;
 }
 
 export interface GatewaySummaryConfig {
@@ -61,25 +65,52 @@ export async function completeGatewaySummaryJson(messages: LlmMessage[], config:
   if (!config.ai || !/^[a-zA-Z0-9_-]{1,80}$/.test(config.gatewayId) || !/^[a-zA-Z0-9_-]{1,80}$/.test(config.route)) {
     throw new Error("summary_gateway.invalid_configuration");
   }
-  let response: unknown;
-  try {
-    response = await config.ai.run(`dynamic/${config.route}`, { messages, max_tokens: 8192 }, {
-      gateway: { id: config.gatewayId, skipCache: true },
-    });
-  } catch (error) {
-    // Do not persist upstream payloads or credentials in D1 error metadata.
-    const status = isRecord(error) && typeof error.status === "number" ? error.status : null;
-    throw new Error(`summary_gateway.request_failed${status ? ` ${status}` : ""}`);
+  const callGateway = async (prompt: LlmMessage[]): Promise<{ envelope: Record<string, unknown>; content: string }> => {
+    let response: unknown;
+    try {
+      response = await config.ai.run(`dynamic/${config.route}`, { messages: prompt, max_tokens: 8192 }, {
+        gateway: { id: config.gatewayId, skipCache: true },
+        // Crucial: native env.AI.run otherwise inherits the gateway's payload
+        // collection setting and may persist the full judicial source text.
+        extraHeaders: { "cf-aig-collect-log-payload": "false" },
+      });
+    } catch (error) {
+      // Never log provider responses, prompts, original text or secrets.
+      const status = isRecord(error) && typeof error.status === "number" ? error.status : null;
+      throw new Error(`summary_gateway.request_failed${status ? ` ${status}` : ""}`);
+    }
+    const envelope = isRecord(response) && isRecord(response.result) ? response.result : response;
+    if (!isRecord(envelope) || !Array.isArray(envelope.choices)) throw new Error("summary_gateway.invalid_response");
+    const choice = envelope.choices[0];
+    const message = isRecord(choice) ? choice.message : null;
+    const content = isRecord(message) && typeof message.content === "string" ? message.content.trim() : "";
+    if (!content) throw new Error("summary_gateway.empty_response");
+    return { envelope, content };
+  };
+
+  const parseObject = (raw: string): string | null => {
+    const content = raw.replace(/^\x60{3}(?:json)?\s*\n?/i, "").replace(/\n?\s*\x60{3}\s*$/, "").trim();
+    try {
+      return isRecord(JSON.parse(content)) ? content : null;
+    } catch {
+      return null;
+    }
+  };
+
+  let { envelope, content } = await callGateway(messages);
+  let validJson = parseObject(content);
+  if (!validJson) {
+    // One bounded JSON repair through the SAME dynamic Gateway, never a
+    // provider-specific or application-level DeepSeek/OpenAI fallback.
+    const repaired = await callGateway([
+      { role: "system", content: SUMMARY_SYSTEM_PROMPT },
+      { role: "user", content: buildRepairPrompt(content) },
+    ]);
+    envelope = repaired.envelope;
+    validJson = parseObject(repaired.content);
+    if (!validJson) throw new Error("summary_gateway.invalid_json");
   }
-  const envelope = isRecord(response) && isRecord(response.result) ? response.result : response;
-  if (!isRecord(envelope) || !Array.isArray(envelope.choices)) throw new Error("summary_gateway.invalid_response");
-  const choice = envelope.choices[0];
-  const message = isRecord(choice) ? choice.message : null;
-  const content = isRecord(message) && typeof message.content === "string" ? message.content.trim() : "";
-  if (!content) throw new Error("summary_gateway.empty_response");
-  let parsed: unknown;
-  try { parsed = JSON.parse(content); } catch { throw new Error("summary_gateway.invalid_json"); }
-  if (!isRecord(parsed)) throw new Error("summary_gateway.invalid_json");
+  content = validJson;
   const model = typeof envelope.model === "string" && envelope.model.trim() ? envelope.model.trim() : "unknown";
   const usage = isRecord(envelope.usage) ? envelope.usage : {};
   const promptTokens = typeof usage.prompt_tokens === "number" && Number.isFinite(usage.prompt_tokens) ? usage.prompt_tokens : undefined;
