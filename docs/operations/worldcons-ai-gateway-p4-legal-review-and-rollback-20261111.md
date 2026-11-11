@@ -4,8 +4,8 @@ Date: 2026-11-11 (KST). Local feature branch: feat/worldcons-ai-gateway-p3.
 
 ## Actual production state (Cloudflare management read-only)
 
-- The deployed worldcons Worker returned 60 bindings and **no native AI binding** or backend flags WORLDCONS_SUMMARY_BACKEND / G1–G4. The deployed worldcons-ingest Worker likewise had no native AI binding.
-- The feature branch's wrangler.jsonc DOES include an AI binding and four default direct-gemini flags. **This branch has not been deployed**. Production cannot be switched to Gateway by only changing a flag until an authorized Worker deployment includes the AI binding.
+- **Preflight state:** worldcons Worker returned 60 bindings and no native AI binding or backend flags. The worldcons-ingest Worker likewise had no AI binding.
+- **2026-11-11 deployment update:** the main worldcons Worker now runs version 88665194-9712-4246-93c0-1233a09fbf52 with AI binding installed, all four direct-gemini defaults retained and all 12 prior secrets preserved. See worldcons-ai-gateway-p4-binding-only-deployed-20261111.md. Actual Gateway summary cutover is still disabled.
 - The deployed default/dynamic/gemini-flash-fallback route is still the four Gemini model fallback chain with BYOK-only and authentication enabled. Do not change the route to roll back a Worker.
 
 ## Stored original-text versus existing Korean summary review
@@ -39,4 +39,4 @@ Important G3 queued-work hazard: an admin retry queued while Gateway is enabled 
 6. On a failure, explicitly restore the affected lane's direct-gemini backend; drain/cancel/requeue G3 pending jobs as necessary; verify resumed direct operation. If flag restoration is inadequate, restore the previous Worker deployment version. Prove D1 consistency and pending-queue safety.
 7. Close P4 only with four real production receipts, legal approvals, and a verified production rollback drill. No automatic background cutover is authorized.
 
-**P4 verdict: NO-GO.** Isolated remote D1/R2 integration passed, but production AI binding has not been deployed and legal-quality issues remain.
+**P4-0 binding-only deploy: PASS.** **P4 live Gateway routing: NO-GO** until independent legal-quality review and the controlled lane/rollback gates are complete. The production AI binding has now been deployed safely; the legal-quality issues remain.

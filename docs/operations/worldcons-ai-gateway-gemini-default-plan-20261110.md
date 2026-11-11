@@ -1,7 +1,7 @@
 # WorldCons AI Gateway migration — Gemini dynamic routing by default
 
 Date: 2026-11-10
-Status: **P0 live Gateway smoke check passed; P1/P2 adapters implemented locally; P3 native Worker inference and remote D1/R2 G1-G4 durable tests passed (synthetic cohort). Independent human legal review and final rollback validation remain open. Production Worker traffic cutover NOT performed.**
+Status: **P4-0 AI-binding-only production deployment completed on 2026-11-11, with all G1–G4 backends still direct-gemini. P0–P3 verification complete; independent legal review, live per-lane Gateway cutover and actual rollback rehearsal remain open. See worldcons-ai-gateway-p4-binding-only-deployed-20261111.md.**
 Priority: P0 authentication and routing contract; P1 shared adapter; P2 administration; P3 staged validation; P4 controlled production cutover.
 
 ## 1. Binding decision and current verified state
