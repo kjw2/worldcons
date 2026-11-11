@@ -350,16 +350,18 @@ async function persistUsPrivateSummary(
   const now = new Date().toISOString();
   const saved = await statementRun(core.prepare(
     `UPDATE articles
-        SET status='summarized',
+      SET status='summarized',
             translation_status=CASE WHEN lower(COALESCE(original_language,''))='ko' THEN 'not_required' ELSE 'translated' END,
             translated_at=?,translation_started_at=NULL,
+            translation_provider=?,translation_model=?,
             translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,
             summarized_at=?,summary_json=?,korean_title=?,error_metadata=NULL,error_class=NULL,error_context=NULL,
             review_state='needs_review',updated_at=?
       WHERE id=? AND source_key=? AND status=? AND updated_at=? AND content_hash IS ?
         AND COALESCE(json_extract(source_metadata,'$.collection.publishable'),json_extract(source_metadata,'$.case.collection.publishable'))=0
         AND json_extract(source_metadata,'$.review.required')=1`,
-  ).bind(now, now, JSON.stringify(summary), summary.koreanTitle, now, row.id, US_SOURCE_KEY, claim.claimedStatus, claim.claimUpdatedAt, claim.contentHash));
+  ).bind(now, summary.aiMetadata?.provider ?? "gemini", summary.aiMetadata?.model ?? null,
+    now, JSON.stringify(summary), summary.koreanTitle, now, row.id, US_SOURCE_KEY, claim.claimedStatus, claim.claimUpdatedAt, claim.contentHash));
   if (saved.success === false || saved.error) throw new Error("us_private_summary.success_write_transient");
   if (changes(saved) === 1) return { disposition: "written" };
   // A competing/durable summary may already exist; converge idempotently.

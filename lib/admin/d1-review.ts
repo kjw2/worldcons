@@ -52,10 +52,11 @@ export async function runD1AdminReviewAction(input:AdminReviewBody,operatorIdent
   const {core,row}=await article(input); if(!row) return {mode:"database" as const,status:"not_found" as const,reason:"자료를 찾을 수 없습니다."};
   const id=text(row,"id")!, slug=text(row,"slug")??undefined, note=input.note;
   if(input.action==="retry-summary"||input.action==="resummarize-with-model") {
-    if(input.action==="resummarize-with-model"&&resolveSummaryBackend(getRuntimeGatewayEnvironment(),"admin")==="cloudflare-ai-gateway") return {mode:"database" as const,status:"unsupported_provider" as const,reason:"Gateway 동적 라우트 사용 중에는 개별 모델 강제 지정을 허용하지 않습니다."};
-    if(input.action==="resummarize-with-model"&&input.provider&&input.provider!=="gemini") return {mode:"database" as const,status:"unsupported_provider" as const,reason:"Cloudflare 요약 실행기는 현재 Gemini provider를 사용합니다."};
-    if(input.provider==="cloudflare-ai-gateway"&&input.model) return {mode:"database" as const,status:"unsupported_provider" as const,reason:"Gateway 동적 라우트는 모델 지정이 아닌 자동 폴백만 허용합니다."};
-    const job=await queue("retry-summary",row,{action:"retry-summary",articleId:id,slug,model:input.model??null,provider:input.provider??"gemini"});
+    const gatewayActive=resolveSummaryBackend(getRuntimeGatewayEnvironment(),"admin")==="cloudflare-ai-gateway";
+    if(gatewayActive&&(input.action==="resummarize-with-model"||Boolean(input.model?.trim()))) return {mode:"database" as const,status:"unsupported_provider" as const,reason:"Gateway 동적 라우트 사용 중에는 개별 모델 강제 지정을 허용하지 않습니다."};
+    if(input.provider&&input.provider!=="gemini"&&input.provider!=="cloudflare-ai-gateway") return {mode:"database" as const,status:"unsupported_provider" as const,reason:"Cloudflare 요약 실행기는 Gemini 또는 AI Gateway만 허용합니다."};
+    if(input.provider==="cloudflare-ai-gateway"&&!gatewayActive) return {mode:"database" as const,status:"unsupported_provider" as const,reason:"Gateway 경로가 활성화되지 않았습니다."};
+    const job=await queue("retry-summary",row,{action:"retry-summary",articleId:id,slug,model:gatewayActive?null:input.model??null,provider:gatewayActive?"cloudflare-ai-gateway":input.provider??"gemini"});
     return {mode:"database" as const,action:input.action,status:"queued" as const,job};
   }
   if(input.action==="retry-source-ingest") {

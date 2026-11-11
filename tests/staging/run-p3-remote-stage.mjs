@@ -30,7 +30,9 @@ function command(args, timeout = 120000) {
   const r = spawnSync(process.execPath, [wrangler, ...args],
     { cwd: process.cwd(), encoding: "utf8", timeout, maxBuffer: 8 * 1024 * 1024 });
   const output = String(r.stdout || "") + String(r.stderr || "");
-  return { ok: r.status === 0, output: output.replaceAll(token, "[redacted]"), stdout: String(r.stdout || ""), code: r.status };
+  const safeOutput = output.replaceAll(token, "[redacted]")
+    .replace(/env\.P3_LOCAL_TEST_TOKEN[^\r\n]*/g, "env.P3_LOCAL_TEST_TOKEN ([redacted])");
+  return { ok: r.status === 0, output: safeOutput, stdout: String(r.stdout || ""), code: r.status };
 }
 const allSamples = [
   { lane: "ingest", id: "afbbb6ef-ad3d-4494-bbf3-563e705efce1", source: "de-bverfg" },
@@ -45,7 +47,13 @@ let deploymentFound = false;
 let responseUrl = "";
 writeFileSync(configFile, JSON.stringify(config, null, 2), { mode: 0o600 });
 try {
-  const deploy = command(["deploy", "--config", configFile, "--autoconfig=false"], 120000);
+  let deploy = command(["deploy", "--config", configFile, "--autoconfig=false"], 120000);
+  if (!deploy.ok && /Worker does not exist on your account|code:\s*10007/i.test(deploy.output)) {
+    // Cloudflare may acknowledge script upload before the script/subdomain
+    // resource becomes visible across API control-plane readers.
+    await new Promise(resolve => setTimeout(resolve, 4500));
+    deploy = command(["deploy", "--config", configFile, "--autoconfig=false"], 120000);
+  }
   const url = deploy.output.match(/https:\/\/[a-zA-Z0-9._-]+\.workers\.dev/);
   if (!deploy.ok || !url) {
     console.log(JSON.stringify({ step: "deploy", success: false, code: deploy.code, message: deploy.output.slice(-1200) }));
@@ -125,7 +133,11 @@ try {
           sourceChars: fixture.body.cleanedText.length, priorCorePoints: fixture.baselineCorePoints,
           ...smoke,
         }));
-        if (smoke.http !== 200 || !smoke.result?.schemaValid) process.exitCode = 1;
+        if (smoke.http !== 200 || !smoke.result?.schemaValid
+          || smoke.result?.legalQualityAudit?.status !== "pass"
+          || smoke.result?.legalQualityAudit?.legalAccuracyVerified !== false) {
+          process.exitCode = 1;
+        }
       }
     } else {
       process.exitCode = 1;

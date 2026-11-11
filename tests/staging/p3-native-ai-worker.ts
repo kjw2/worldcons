@@ -1,6 +1,7 @@
 import { resolveSummaryGateway, type GatewaySummaryAiBinding, type SummaryLane } from "../../lib/ai/gateway-summary";
 import { summarizeArticle } from "../../lib/ai/summarize";
 import { SummarySchema } from "../../lib/ai/schema";
+import { auditLegalEvidence } from "../../lib/ai/legal-evidence-audit";
 
 type P3Env = {
   AI: GatewaySummaryAiBinding;
@@ -93,6 +94,11 @@ export default {
         cleanedText: input.cleanedText,
       }, { gateway, allowProviderFallback: false });
       const parsed = SummarySchema.safeParse(result);
+      const legalAudit = auditLegalEvidence({
+        sourceKey: input.sourceKey,
+        originalTitle: input.originalTitle,
+        cleanedText: input.cleanedText,
+      }, result);
       return Response.json({
         ok: parsed.success,
         lane: input.lane,
@@ -104,6 +110,7 @@ export default {
         corePoints: result.summary.coreSummary.length,
         referencedProvisions: result.summary.referencedProvisions.length,
         schemaValid: parsed.success,
+        legalQualityAudit: legalAudit,
         originalTitlePreserved: result.originalTitle === input.originalTitle,
         // Ephemeral authenticated review only. Do not persist the output.
         review: {

@@ -347,6 +347,8 @@ export async function runD1RefreshTagCounts() {
 export async function runD1SummarizeArticle(input: {
   articleId?: string;
   slug?: string;
+  /** Ingest replays must not force a second LLM request; admin retries may. */
+  source?: "ingest" | "admin";
   apiKeys: string[];
   model?: string;
   gateway?: GatewaySummaryConfig;
@@ -364,6 +366,13 @@ export async function runD1SummarizeArticle(input: {
   ).bind(value).all<SummaryCandidateRow>());
   const row = rows[0];
   if (!row) throw new Error("summary_d1.article_not_found");
+  if (input.source === "ingest" && row.status === "summarized" && durableSummary(row)) {
+    return {
+      mode: "database" as const, articleId: row.id, slug: row.slug,
+      result: { status: "skipped" as const, reason: "Article already has a valid durable summary." },
+      ingestionRunSummaryCounts: {}, tagRefresh: undefined,
+    };
+  }
   const keys = input.apiKeys.map((key) => key.trim()).filter(Boolean);
   if (keys.length === 0 && !input.gateway) throw new Error("summary_d1.api_key_missing");
   const result = await summarizeCandidate(row, {

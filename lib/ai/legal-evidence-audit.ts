@@ -1,0 +1,87 @@
+import type { SummaryJson } from "@/lib/db/types";
+
+/** Deterministic P3 pre-cutover review signals, NOT a legal truth classifier.
+ * Never return source or summary text; a clean result is not a correctness signoff.
+ */
+export type LegalEvidenceCode =
+  | "official_title_changed"
+  | "korean_summary_missing"
+  | "case_number_not_in_source"
+  | "unsubstantiated_child_claim"
+  | "unreliable_legal_terminology"
+  | "reference_number_not_in_source"
+  | "party_claim_attribution_review";
+
+export interface LegalEvidenceFinding {
+  code: LegalEvidenceCode;
+  severity: "block" | "review";
+}
+
+export interface LegalEvidenceAudit {
+  status: "pass" | "review" | "block";
+  findings: LegalEvidenceFinding[];
+  legalAccuracyVerified: false;
+}
+
+export interface SourceForLegalAudit {
+  sourceKey: string;
+  originalTitle?: string | null;
+  cleanedText?: string | null;
+}
+
+const MINOR_IN_SOURCE = /\b(?:kind(?:er|es|ern|heit)?|minderjährig(?:e|en|er)?|child(?:ren)?|minor(?:s)?|juvenile(?:s)?|menor(?:es)?|niñ[oa]s?|infan(?:t|ce)s?|enfants?|mineur(?:e|s)?)\b|未成年|児童|미성년|아동/i;
+const MINOR_IN_KOREAN = /(?:아동|미성년자?|어린이|어린아이|청소년)/;
+
+function caseNumbers(text: string): string[] {
+  const found = text.match(/\b(?:\d+\s*BvR\s*\d+\/\d+|\d{2}A\d{2,4}|20\d{2}[-–]\d{3,4}(?:\/\d{3,4})?\s*QPC|(?:AUTO|ATC)\s*\d+\/20\d{2})\b/gi) ?? [];
+  return [...new Set(found.map(s => s.toLowerCase().replace(/\s+/g, "").replace(/–/g, "-")))];
+}
+
+export function auditLegalEvidence(source: SourceForLegalAudit, summary: SummaryJson): LegalEvidenceAudit {
+  const sourceTitle = source.originalTitle ?? "";
+  const original = [sourceTitle, source.cleanedText ?? ""].join("\n");
+  const narrative = [
+    summary.koreanTitle,
+    ...summary.summary.coreSummary,
+    summary.summary.background,
+    summary.summary.caseStructure,
+    summary.summary.implications,
+    summary.summary.practicalNotes,
+  ].join(" ");
+  const findings: LegalEvidenceFinding[] = [];
+  const add = (code: LegalEvidenceCode, severity: "block" | "review") => {
+    if (!findings.some(f => f.code === code)) findings.push({ code, severity });
+  };
+  if (sourceTitle.trim() && summary.originalTitle?.trim() !== sourceTitle.trim()) add("official_title_changed", "block");
+  if (!/[가-힣]/.test(summary.koreanTitle) || !summary.summary.coreSummary.some(p => /[가-힣]/.test(p))) {
+    add("korean_summary_missing", "block");
+  }
+  const supported = new Set(caseNumbers(original));
+  for (const number of caseNumbers(narrative)) {
+    if (!supported.has(number)) add("case_number_not_in_source", "block");
+  }
+  if (MINOR_IN_KOREAN.test(narrative) && !MINOR_IN_SOURCE.test(original)) add("unsubstantiated_child_claim", "block");
+  // These are specific known *wrong* Korean transcriptions of German legal
+  // terms seen in an actual P3 canary, not a claim to validate all translations.
+  if (source.sourceKey === "de-bverfg" && (
+    (/\bAsyl(?:antrag|verfahren|bewerber|recht)?\b/i.test(original) && /아스일/.test(narrative))
+    || (/\bSenat(?:s)?\b/i.test(original) && /제\s*\d+\s*센트/.test(narrative))
+  )) add("unreliable_legal_terminology", "block");
+  for (const provision of summary.summary.referencedProvisions) {
+    if ((provision.article.match(/\b\d{4,}\b/g) ?? []).some(number => !original.includes(number))) {
+      add("reference_number_not_in_source", "review");
+    }
+  }
+  // This is a manual attribution REVIEW trigger, not a claim of fabrication.
+  if (source.sourceKey === "us-scotus"
+    && /respondents?\s+(?:claimed|argued|contended|alleged)/i.test(original)
+    && /Article\s+I,\s*Section\s+1/i.test(original)
+    && summary.summary.referencedProvisions.some(p => /article\s*i|제\s*1\s*조/i.test(p.article))) {
+    add("party_claim_attribution_review", "review");
+  }
+  return {
+    status: findings.some(f => f.severity === "block") ? "block" : findings.length ? "review" : "pass",
+    findings,
+    legalAccuracyVerified: false,
+  };
+}

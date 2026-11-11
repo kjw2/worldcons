@@ -1,7 +1,7 @@
 # WorldCons AI Gateway migration — Gemini dynamic routing by default
 
 Date: 2026-11-10
-Status: **P0 live Gateway smoke check passed; P1 G1/G2 and P2 G3/G4 adapters implemented locally; P3 four-country live Gateway probes passed but full deployed four-lane and legal-quality gates remain open. Production Worker traffic cutover NOT performed.**
+Status: **P0 live Gateway smoke check passed; P1/P2 adapters implemented locally; P3 live native Worker inference and local durable SQLite G1-G4 tests passed, with staging-only legal quality checks. Remote durable D1/R2 workflow and independent human legal-review gates remain open. Production Worker traffic cutover NOT performed.**
 Priority: P0 authentication and routing contract; P1 shared adapter; P2 administration; P3 staged validation; P4 controlled production cutover.
 
 ## 1. Binding decision and current verified state

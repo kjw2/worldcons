@@ -22,6 +22,9 @@ Your task:
 - Explain the background, case/procedural structure, implications, and practical notes.
 - Extract entity tags and categories.
 - Do not invent legal provisions, holdings, facts, dates, parties, or procedural history.
+- Distinguish litigants' allegations, lower-court reasoning, and the deciding court's actual holding. Never restate a party's constitutional claim as the deciding court's adopted rule.
+- Do not infer the litigants' age, minor/child status, nationality, case type, or other factual attributes unless they are clearly supported by the provided original text.
+- Mention a referenced constitutional article as a litigant's argument when it appears only in a pleaded claim; do not misattribute it to the deciding court.
 - If uncertain, mark confidence as low or add an appropriate risk flag.
 - Return only valid JSON matching the provided schema.
 
@@ -30,6 +33,8 @@ Terminology rules:
 - Do not call Conseil constitutionnel "프랑스 헌법이사회" or "프랑스 헌법재판소".
 - Translate Supreme Court of the United States / SCOTUS consistently as "미국 연방대법원".
 - Do not call the Supreme Court of the United States "미국 대법원", "미국 연방 대법원", "미 연방대법원", or "미 대법원".
+- In German constitutional decisions, translate Asyl / Asylantrag as "망명" or "난민 신청", never transliterate them as "아스일".
+- Translate Bundesverfassungsgericht's Senat as "부" and Kammer as "재판부", never write "센트" for Senat.
 
 ${SUMMARY_SCHEMA_RULES}`;
 
