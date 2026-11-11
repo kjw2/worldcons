@@ -34,11 +34,11 @@ lib/ai/legal-evidence-audit.ts returns stable reason-code findings only; it neve
 
 The audit is active only in the disposable **staging** Worker and causes the staging script to fail on any non-pass status. It is **not installed as a production automatic publication gate**. The audit always returns legalAccuracyVerified=false: a clean result is insufficient for publication approval.
 
-## P4 release gates still open
+## P4 release gates still open (updated after remote durable test)
 
 - No production cutover: all G1–G4 Worker backend flags remain direct-gemini in this branch; no production deployment or push has been performed.
-- Live remote durable G1/G2/G3/G4 with throwaway D1/R2 and queue resources remains untested, although local SQLite workflows and stateless native Worker inference separately passed.
+- **Completed Nov 11**: G1/G2/G3/G4 real remote D1 Core/Ingest/Ops, real R2 for G4, genuine Gateway calls, idempotent replay, injected HTTP 429 drill and verified resource cleanup. See worldcons-ai-gateway-p3-remote-durable-20261111.md. Staging source texts and the PDF were synthetic, not verified judicial originals.
 - An independent legal reviewer must confirm outcomes, citations, parties, court holdings and procedural posture of all four representative decisions against official source text before the quality gate is signed off.
-- Crash/replay and rollback on a fully remote durable staging environment remain open.
+- Replay/idempotency is verified remotely; mid-flight crash recovery and final production rollback drill are still open.
 
-**P3 conclusion: local durable and remote inference subgates PASS; full remote durable and independent legal-accuracy subgates OPEN. P4 production cutover NO-GO.**
+**P3 conclusion: local durable, remote inference and remote durable G1-G4 subgates PASS; independent legal accuracy and operational production rollback subgates OPEN. P4 cutover NO-GO.**
