@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { auditLegalEvidence } from "@/lib/ai/legal-evidence-audit";
+import { SUMMARY_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import type { SummaryJson } from "@/lib/db/types";
 
 function sample(overrides: Partial<SummaryJson> = {}): SummaryJson {
@@ -98,4 +99,64 @@ test("P3 flags absent long statute numbers for human review", () => {
   const result=auditLegalEvidence(german,output);
   assert.equal(result.status,"review");
   assert.deepEqual(result.findings.map(f=>f.code),["reference_number_not_in_source"]);
+});
+
+test("P4 source audit catches wrong direction of German deportation", () => {
+  const original = {
+    sourceKey: "de-bverfg",
+    originalTitle: "Beschluss vom 15. Oktober 2026",
+    cleanedText: "Die Abschiebung der Beschwerdeführerin wird bis zur Entscheidung über die Verfassungsbeschwerde, längstens für die Dauer von sechs Monaten, untersagt.",
+  };
+  const bad = sample({ summary: {
+    ...sample().summary,
+    coreSummary: ["독일 연방헌재는 신청인에 대한 독일로의 송환을 6개월간 금지했습니다."],
+  } });
+  const review = auditLegalEvidence(original, bad);
+  assert.equal(review.status, "block");
+  assert.deepEqual(review.findings.map(x => x.code), ["unsupported_deportation_direction"]);
+  const corrected = auditLegalEvidence(original, sample({ summary: {
+    ...sample().summary,
+    coreSummary: ["신청인에 대한 강제송환을 본안 결정 전까지 최장 6개월 금지했습니다."],
+  } }));
+  assert.equal(corrected.status, "pass");
+  assert.equal(corrected.legalAccuracyVerified, false);
+});
+
+test("P4 French effect starts on DECISION publication, never vague law promulgation", () => {
+  const source = {
+    sourceKey: "fr-conseil-constitutionnel",
+    originalTitle: "Décision n° 2026-1230/1231 QPC du 23 octobre 2026",
+    cleanedText: "Celle-ci intervient donc à compter de la date de la publication de la présente décision. Elle est applicable à toutes les affaires non jugées définitivement à cette date.",
+  };
+  const baseline = sample({ originalTitle: source.originalTitle,
+    summary: { ...sample().summary, coreSummary: ["이번 위헌 결정으로 해당 조항은 공포일부터 폐지되며 확정되지 않은 사건에 적용됩니다."] },
+  });
+  const review = auditLegalEvidence(source,baseline);
+  assert.equal(review.status, "review");
+  assert.deepEqual(review.findings.map(x=>x.code), ["judgment_effective_date_ambiguous"]);
+  const clearer = auditLegalEvidence(source,sample({ originalTitle: source.originalTitle,
+    summary: { ...sample().summary, coreSummary: ["위헌 결정의 효력은 이 결정이 공표된 날부터 발생하며 아직 확정되지 않은 사건에 적용됩니다."] },
+  }));
+  assert.equal(clearer.status, "pass");
+});
+
+test("P4 Spanish party-cited art 219.1 marked sic cannot be treated uncritically", () => {
+  const source = {
+    sourceKey: "es-tribunal-constitucional",
+    originalTitle: "AUTO 48/2026, 2026-07-21",
+    cleanedText: "El recusante cita el art. 219.1 e) LOPJ [sic, la causa primera prevista en el art. 219 LOPJ es el vínculo matrimonial] y alega parcialidad.",
+  };
+  const output = sample({ originalTitle: source.originalTitle, summary: {
+    ...sample().summary,
+    referencedProvisions: [{jurisdiction:"ES",lawName:"LOPJ",article:"art. 219.1",description:"친족관계 제척",confidence:"high"}],
+  } });
+  const result=auditLegalEvidence(source,output);
+  assert.equal(result.status,"review");
+  assert.deepEqual(result.findings.map(x=>x.code),["party_citation_marked_sic"]);
+});
+
+test("P4 live summary prompt cautions against all three observed baseline legal errors", () => {
+  assert.match(SUMMARY_SYSTEM_PROMPT, /removal OF a person from removal TO a destination/i);
+  assert.match(SUMMARY_SYSTEM_PROMPT, /publication OF THE DECISION/i);
+  assert.match(SUMMARY_SYSTEM_PROMPT, /citation as "\[sic\]"/i);
 });

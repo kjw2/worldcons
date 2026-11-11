@@ -9,6 +9,9 @@ export type LegalEvidenceCode =
   | "case_number_not_in_source"
   | "unsubstantiated_child_claim"
   | "unreliable_legal_terminology"
+  | "unsupported_deportation_direction"
+  | "judgment_effective_date_ambiguous"
+  | "party_citation_marked_sic"
   | "reference_number_not_in_source"
   | "party_claim_attribution_review";
 
@@ -67,6 +70,25 @@ export function auditLegalEvidence(source: SourceForLegalAudit, summary: Summary
     (/\bAsyl(?:antrag|verfahren|bewerber|recht)?\b/i.test(original) && /아스일/.test(narrative))
     || (/\bSenat(?:s)?\b/i.test(original) && /제\s*\d+\s*센트/.test(narrative))
   )) add("unreliable_legal_terminology", "block");
+  // Specific direction-of-removal error observed in the published Korean
+  // baseline: the German court barred deportation OF the applicant, without
+  // ordering or identifying "deportation TO Germany" in its holding.
+  if (source.sourceKey === "de-bverfg"
+    && /Die Abschiebung der Beschwerdeführerin/i.test(original)
+    && !/Die Abschiebung der Beschwerdeführerin nach Deutschland/i.test(original)
+    && /독일로(?:의)?\s*(?:강제)?(?:송환|추방)/.test(narrative)) {
+    add("unsupported_deportation_direction", "block");
+  }
+  if (source.sourceKey === "fr-conseil-constitutionnel"
+    && /date de la publication de la présente décision/i.test(original)
+    && /(?:공포일부터\s*(?:폐지|무효)|공포일부터\s*효력|법률의\s*공포일)/.test(narrative)) {
+    add("judgment_effective_date_ambiguous", "review");
+  }
+  if (source.sourceKey === "es-tribunal-constitucional"
+    && /\bart\.\s*219\.1\b[\s\S]{0,45}\[sic/i.test(original)
+    && summary.summary.referencedProvisions.some(p => /219\.1\b/i.test(p.article))) {
+    add("party_citation_marked_sic", "review");
+  }
   for (const provision of summary.summary.referencedProvisions) {
     if ((provision.article.match(/\b\d{4,}\b/g) ?? []).some(number => !original.includes(number))) {
       add("reference_number_not_in_source", "review");

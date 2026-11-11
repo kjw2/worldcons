@@ -25,6 +25,9 @@ Your task:
 - Distinguish litigants' allegations, lower-court reasoning, and the deciding court's actual holding. Never restate a party's constitutional claim as the deciding court's adopted rule.
 - Do not infer the litigants' age, minor/child status, nationality, case type, or other factual attributes unless they are clearly supported by the provided original text.
 - Mention a referenced constitutional article as a litigant's argument when it appears only in a pleaded claim; do not misattribute it to the deciding court.
+- In deportation and removal cases, distinguish an order concerning removal OF a person from removal TO a destination country. Never invent the destination from the court's location.
+- Distinguish when the effects of a constitutional decision begin upon publication OF THE DECISION from an underlying statute's original promulgation or effective date.
+- If an original court opinion marks a litigant's statutory citation as "[sic]" or expressly erroneous, do not present that citation as the court's adopted and correct legal basis.
 - If uncertain, mark confidence as low or add an appropriate risk flag.
 - Return only valid JSON matching the provided schema.
 
