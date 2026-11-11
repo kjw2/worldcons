@@ -1,7 +1,7 @@
 # WorldCons AI Gateway migration — Gemini dynamic routing by default
 
 Date: 2026-11-10
-Status: **P0 live Gateway smoke check passed; P1 G1/G2 and P2 G3/G4 adapters implemented and tested locally. Production Worker traffic cutover NOT performed.**
+Status: **P0 live Gateway smoke check passed; P1 G1/G2 and P2 G3/G4 adapters implemented locally; P3 four-country live Gateway probes passed but full deployed four-lane and legal-quality gates remain open. Production Worker traffic cutover NOT performed.**
 Priority: P0 authentication and routing contract; P1 shared adapter; P2 administration; P3 staged validation; P4 controlled production cutover.
 
 ## 1. Binding decision and current verified state
@@ -96,7 +96,8 @@ Use Cloudflare's existing gateway authentication and provider credentials. Do no
 - Per-lane reversible Worker settings: `WORLDCONS_SUMMARY_BACKEND_G1` (incremental), `_G2` (scheduled/backfill), `_G3` (admin retries/batch), `_G4` (US private) accept `direct-gemini` or `cloudflare-ai-gateway`. They independently override the global `WORLDCONS_SUMMARY_BACKEND`.
 - G3 admin retry uses the existing authenticated, audited job queue; the dynamic route refuses forced model overrides. G4 retains official-PDF/R2 verification, private review hold, immutable approval and publication guards.
 - `/admin/llm` shows read-only route, four lane flags, last test result and actual returned model; an authenticated, CSRF-protected test performs a **real API call** only when explicitly clicked. Only sanitized test metadata is stored in the existing `worldcons_ops.llm_settings` document.
-- Local integration tests, TypeScript, Vinext build and Wrangler dry-run validate wiring; P3 held-out full-document live quality tests and P4 Worker cutover remain **unperformed**.
+- Local integration tests, TypeScript, Vinext build and Wrangler dry-run validate wiring; the *exact deployed Worker four-lane P3 E2E and human legal-quality comparison*, and P4 Worker cutover remain **unperformed**.
+- P3 read-only live full-text calls across Germany, Spain, France and the US returned 4/4 valid field-shape JSON responses, with BYOK-only confirmed. These are standalone Gateway calls, not deployed Worker lane E2E or signed-off legal-quality comparison. See `worldcons-ai-gateway-p3-verification-20261111.md`. The P4 gate remains closed.
 
 ### 4.2 Definition of done for four paths
 
