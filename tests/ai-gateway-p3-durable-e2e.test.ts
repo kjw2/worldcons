@@ -207,7 +207,7 @@ test("P3 durable G4 uses real official-PDF R2 hash gate and persists private sum
   }
   setRuntimeD1Bindings({worldcons_core: core as D1RuntimeDatabase});
   const usId = "d8dc4ebc-7193-4a2d-8bcf-21e9cbbe4127";
-  const url = "https://www.supremecourt.gov/opinions/26pdf/26a476_k537.pdf";
+  const url = "https://www.supremecourt.gov/opinions/26pdf/26a560_onkq.pdf";
   const bytes = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
   const sha = createHash("sha256").update(bytes).digest("hex");
   const metadata = {

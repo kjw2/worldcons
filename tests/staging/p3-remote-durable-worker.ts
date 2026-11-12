@@ -94,13 +94,13 @@ async function seed(env: Env) {
     const item = records[lane];
     const isPrivate = lane === "g4";
     const meta = isPrivate ? {
-      officialPdf: { url: "https://www.supremecourt.gov/opinions/26pdf/26a476_k537.pdf", sha256: sha, r2Key: storedR2Key, docketVerified: true },
+      officialPdf: { url: "https://www.supremecourt.gov/opinions/26pdf/26a560_onkq.pdf", sha256: sha, r2Key: storedR2Key, docketVerified: true },
       collection: { publishable: false, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "official-pdf" },
       review: { required: true, reason: "private human review" },
     } : {
       collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" },
     };
-    const url = isPrivate ? "https://www.supremecourt.gov/opinions/26pdf/26a476_k537.pdf"
+    const url = isPrivate ? "https://www.supremecourt.gov/opinions/26pdf/26a560_onkq.pdf"
       : lane === "g2" ? "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/fixture48"
       : lane === "g3" ? "https://www.conseil-constitutionnel.fr/decision/2026/20261230QPC.htm"
       : lane === "g1-429" ? "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/10/fixture-failure.htm"
