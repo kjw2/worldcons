@@ -33,6 +33,7 @@ Your task:
 
 Terminology rules:
 - Translate Conseil constitutionnel / French Constitutional Council consistently as "프랑스 헌법위원회".
+- Translate the French "loi de financement de la sécurité sociale" as "사회보장재정법". Never insert unsupported digits into a translated statute name.
 - Do not call Conseil constitutionnel "프랑스 헌법이사회" or "프랑스 헌법재판소".
 - Translate Supreme Court of the United States / SCOTUS consistently as "미국 연방대법원".
 - Do not call the Supreme Court of the United States "미국 대법원", "미국 연방 대법원", "미 연방대법원", or "미 대법원".

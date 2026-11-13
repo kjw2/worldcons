@@ -153,10 +153,27 @@ test("P4 Spanish party-cited art 219.1 marked sic cannot be treated uncritically
   const result=auditLegalEvidence(source,output);
   assert.equal(result.status,"review");
   assert.deepEqual(result.findings.map(x=>x.code),["party_citation_marked_sic"]);
+  const htmlWhitespaceSource={...source,cleanedText:source.cleanedText.replace("[sic,","[ sic ,")};
+  assert.deepEqual(auditLegalEvidence(htmlWhitespaceSource,output).findings.map(x=>x.code),["party_citation_marked_sic"]);
+});
+
+test("P4 flags the French social-security finance statute's observed stray digit", () => {
+  const source={
+    sourceKey:"fr-conseil-constitutionnel",
+    originalTitle:"Décision n° 2026-1230/1231 QPC du 23 octobre 2026",
+    cleanedText:"Loi n° 2025-1403 du 30 décembre 2025 de financement de la sécurité sociale pour 2026.",
+  };
+  const wrong=sample({originalTitle:source.originalTitle,
+    summary:{...sample().summary,coreSummary:["프랑스 헌법위원회는 2026년 사회보장재정1법 조항을 위헌으로 판단했습니다."]}});
+  assert.deepEqual(auditLegalEvidence(source,wrong).findings.map(x=>x.code),["garbled_french_social_security_law_name"]);
+  const corrected=sample({originalTitle:source.originalTitle,
+    summary:{...sample().summary,coreSummary:["프랑스 헌법위원회는 2026년도 사회보장재정법 조항을 위헌으로 판단했습니다."]}});
+  assert.equal(auditLegalEvidence(source,corrected).status,"pass");
 });
 
 test("P4 live summary prompt cautions against all three observed baseline legal errors", () => {
   assert.match(SUMMARY_SYSTEM_PROMPT, /removal OF a person from removal TO a destination/i);
   assert.match(SUMMARY_SYSTEM_PROMPT, /publication OF THE DECISION/i);
   assert.match(SUMMARY_SYSTEM_PROMPT, /citation as "\[sic\]"/i);
+  assert.match(SUMMARY_SYSTEM_PROMPT, /사회보장재정법/);
 });

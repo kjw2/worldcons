@@ -12,6 +12,7 @@ export type LegalEvidenceCode =
   | "unsupported_deportation_direction"
   | "judgment_effective_date_ambiguous"
   | "party_citation_marked_sic"
+  | "garbled_french_social_security_law_name"
   | "reference_number_not_in_source"
   | "party_claim_attribution_review";
 
@@ -84,8 +85,15 @@ export function auditLegalEvidence(source: SourceForLegalAudit, summary: Summary
     && /(?:공포일부터\s*(?:폐지|무효)|공포일부터\s*효력|법률의\s*공포일)/.test(narrative)) {
     add("judgment_effective_date_ambiguous", "review");
   }
+  // Observed in the public 2026-1230/1231 QPC summary:
+  // "사회보장재정1법" is not a supported Korean rendering of the source law name.
+  if (source.sourceKey === "fr-conseil-constitutionnel"
+    && /financement de la sécurité sociale/i.test(original)
+    && /사회보장재정\s*\d+\s*법/.test(narrative)) {
+    add("garbled_french_social_security_law_name", "review");
+  }
   if (source.sourceKey === "es-tribunal-constitucional"
-    && /\bart\.\s*219\.1\b[\s\S]{0,45}\[sic/i.test(original)
+    && /\bart\.\s*219\.1\b[\s\S]{0,45}\[\s*sic\b/i.test(original)
     && summary.summary.referencedProvisions.some(p => /219\.1\b/i.test(p.article))) {
     add("party_citation_marked_sic", "review");
   }

@@ -1,7 +1,7 @@
 # WorldCons AI Gateway migration — Gemini dynamic routing by default
 
 Date: 2026-11-10
-Status: **P4-0 production AI binding installed; effective production G1-G4 backends remain direct-gemini. On 2026-11-13, standalone TypeScript compilation and Vinext production build passed; G1-only version 115 was uploaded INACTIVE with no traffic, version 114 still active. Full Next typegen/typecheck remains unverified. Judicial-source legal review and controlled live rollback gates are still open. See worldcons-ai-gateway-p4-g1-inactive-version-20261113.md.**
+Status: **P4-0 production AI binding installed; effective production G1-G4 remain direct-gemini. On 2026-11-14 official-source checks passed 4/4, full Vinext-aligned pnpm typecheck, 105 regression tests and production build passed, and updated G1-only candidate version 116 was uploaded INACTIVE. Version 114 still serves 100% of production traffic. Human legal signoff and controlled live G1/rollback remain open. See worldcons-p4-g1-v116-readiness-20261114.md.**
 Priority: P0 authentication and routing contract; P1 shared adapter; P2 administration; P3 staged validation; P4 controlled production cutover.
 
 ## 1. Binding decision and current verified state
