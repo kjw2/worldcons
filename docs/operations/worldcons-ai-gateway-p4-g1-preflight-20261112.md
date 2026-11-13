@@ -28,3 +28,5 @@ The 2026-11-09 Supreme Court decision *Mullin v. Friends of the Ruidosa Church* 
 4. Validate authorized production canary and rollback before switching any live summary lane.
 
 **Result: G1 candidate prepared but not uploaded. Production still uses direct Gemini. P4 live cutover remains NO-GO.**
+
+**2026-11-13 update:** Git access recovered; standalone TypeScript compilation and Vinext production build passed. The correct generated Vinext Wrangler config was used to upload G1-only candidate version 115 INACTIVE. Production effective version 114 remains at 100% with all G1-G4 direct Gemini. Full Next typegen/typecheck pipeline is still not verified. See worldcons-ai-gateway-p4-g1-inactive-version-20261113.md.
