@@ -4,7 +4,7 @@ import test from "node:test";
 import { setRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
 import { runD1SummaryDrain, runD1SummarizeArticle, runD1SyncSummaryTags } from "@/lib/cloudflare/summary/d1-summary-drain";
 import type { GatewaySummaryConfig } from "@/lib/ai/gateway-summary";
-import { runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
+import { runD1PublicationDrain, runD1PublishArticle } from "@/lib/cloudflare/publication/d1-publication-drain";
 
 const goodSummary = {
   koreanTitle: "결정 요약",
@@ -148,6 +148,92 @@ test("P1 G1 single-article path allows Gateway without direct Gemini key and ret
   } finally {
     close(db);
   }
+});
+
+test("P4 Gateway legal evidence BLOCK holds the summary, records safe review codes and prevents automatic retry", async () => {
+  const db = setup();
+  try {
+    const id = "11111111-1111-4111-8111-111111111111";
+    db.core.prepare("UPDATE articles SET source_key='de-bverfg',cleaned_text=?,original_title='Decision' WHERE id=?")
+      .run(("Die Abschiebung der Beschwerdeführerin wird längstens für die Dauer von sechs Monaten untersagt. ").repeat(11), id);
+    let calls = 0;
+    await assert.rejects(runD1SummarizeArticle({
+      articleId: id,
+      source: "ingest",
+      apiKeys: [],
+      gateway: p1Gateway,
+      summarize: async () => {
+        calls++;
+        return {
+          ...goodSummary,
+          koreanTitle: "독일로의 송환을 금지한 사건",
+          aiMetadata: { provider: "cloudflare-ai-gateway", model: "gemini-3.5-flash-lite" },
+        } as never;
+      },
+      createEmbedding: async () => null,
+    }), /summary_gateway\.legal_evidence_review_required/);
+    assert.equal(calls, 1);
+    const row = db.core.prepare("SELECT status,summary_json,translation_status,review_state,error_class,error_context FROM articles WHERE id=?").get(id) as Record<string, unknown>;
+    assert.equal(row.status, "failed_summary");
+    assert.equal(row.summary_json, null, "unreviewed model text must never be stored as a durable summary");
+    assert.equal(row.translation_status, "failed");
+    assert.equal(row.review_state, "needs_triage");
+    assert.equal(row.error_class, "summary_gateway.legal_evidence_review_required");
+    assert.match(String(row.error_context), /unsupported_deportation_direction/);
+    assert(!String(row.error_context).includes("Die Abschiebung"), "do not log original court text");
+    const backlog = await runD1SummaryDrain({ limit: 1, maxPasses: 1, apiKeys: [], gateway: p1Gateway,
+      summarize: async () => { calls++; return goodSummary as never; } });
+    assert.equal(backlog.candidateCount, 0, "held legal-risk article must not be automatically billed a second time");
+    assert.equal(calls, 1);
+    assert.equal(db.core.prepare("SELECT COUNT(*) n FROM article_publications_p3").get()?.n, 0);
+  } finally { close(db); }
+});
+
+test("P4 the batch and targeted publication gates refuse legal review holds", async () => {
+  for (const heldState of ["needs_triage", "needs_review", "blocked"]) {
+    const db = setup();
+    try {
+      const id = "11111111-1111-4111-8111-111111111111";
+      const result = await runD1SummarizeArticle({
+        articleId: id, apiKeys: ["test-key"],
+        summarize: async () => goodSummary as never, createEmbedding: async () => null,
+      });
+      assert.equal(result.result.status, "summarized");
+      db.core.prepare("UPDATE articles SET review_state=? WHERE id=?").run(heldState, id);
+      const batch = await runD1PublicationDrain({ limit: 1 });
+      assert.equal(batch.selectedCount, 0, heldState);
+      assert.equal(batch.publishedCount, 0, heldState);
+      const targeted = await runD1PublishArticle({ articleId: id });
+      assert.equal(targeted.published, false, heldState);
+      assert.equal(targeted.skippedReason, "ineligible", heldState);
+      assert.equal(db.core.prepare("SELECT COUNT(*) n FROM article_publications_p3").get()?.n, 0);
+    } finally { close(db); }
+  }
+});
+
+test("P4 Gateway legal evidence REVIEW holds unqualified nationality without storing or publishing it", async () => {
+  const db = setup();
+  try {
+    const id = "11111111-1111-4111-8111-111111111111";
+    db.core.prepare("UPDATE articles SET source_key='de-bverfg',cleaned_text=? WHERE id=?")
+      .run(("Die Beschwerdeführerin ist nach ihren Angaben somalische Staatsangehörige. ").repeat(11), id);
+    await assert.rejects(runD1SummarizeArticle({
+      articleId: id, source: "ingest", apiKeys: [], gateway: p1Gateway,
+      summarize: async () => ({
+        ...goodSummary,
+        koreanTitle: "소말리아 국적 신청인의 헌법소원",
+        aiMetadata: {provider: "cloudflare-ai-gateway", model: "gemini-3.5-flash-lite"},
+      }) as never,
+      createEmbedding: async () => null,
+    }), /summary_gateway\.legal_evidence_review_required/);
+    const held = db.core.prepare("SELECT status,summary_json,review_state,error_class,error_context FROM articles WHERE id=?").get(id) as Record<string, unknown>;
+    assert.equal(held.status, "failed_summary");
+    assert.equal(held.summary_json, null);
+    assert.equal(held.review_state, "needs_triage");
+    assert.equal(held.error_class, "summary_gateway.legal_evidence_review_required");
+    assert.match(String(held.error_context), /applicant_nationality_attribution_review/);
+    assert.equal(db.core.prepare("SELECT COUNT(*) n FROM article_publications_p3").get()?.n, 0);
+  } finally { close(db); }
 });
 
 test("P1 G2 scheduled backlog uses same Gateway without direct Gemini key and does not auto-publish", async () => {

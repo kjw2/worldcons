@@ -2,6 +2,7 @@ import type { SummaryJson, ArticleContentType } from "@/lib/db/types";
 import type { D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import { summarizeArticle } from "@/lib/ai/summarize";
+import { auditLegalEvidence } from "@/lib/ai/legal-evidence-audit";
 import type { GatewaySummaryConfig } from "@/lib/ai/gateway-summary";
 import { createEmbeddingArtifact } from "@/lib/ai/embeddings";
 import { tryPersistArticleEmbedding } from "@/lib/ingest/embedding-store";
@@ -240,7 +241,7 @@ async function recoverStaleSummarizing(options: { limit: number; sourceKey?: str
 async function selectCandidates(options: { limit: number; sourceKey?: string; fetchLimit: number }) {
   const sourceFilter = options.sourceKey ? " AND source_key = ?" : "";
   const rows = ensureSuccess(await d1().prepare(
-    `SELECT ${SUMMARY_CANDIDATE_COLUMNS} FROM articles WHERE status IN ('cleaned','failed_summary') AND summarized_at IS NULL AND translation_status IN ('pending','failed') AND (translation_next_attempt_at IS NULL OR translation_next_attempt_at<=?) AND json_valid(source_metadata) AND COALESCE(json_extract(source_metadata,'$.collection.publishable'),json_extract(source_metadata,'$.case.collection.publishable'))=1${sourceFilter} ORDER BY CASE WHEN COALESCE(json_extract(source_metadata,'$.catalog.sourceOnly'),0)=1 THEN 1 ELSE 0 END ASC,created_at ASC,id ASC LIMIT ?`,
+    `SELECT ${SUMMARY_CANDIDATE_COLUMNS} FROM articles WHERE status IN ('cleaned','failed_summary') AND summarized_at IS NULL AND translation_status IN ('pending','failed') AND COALESCE(error_class,'') <> 'summary_gateway.legal_evidence_review_required' AND (translation_next_attempt_at IS NULL OR translation_next_attempt_at<=?) AND json_valid(source_metadata) AND COALESCE(json_extract(source_metadata,'$.collection.publishable'),json_extract(source_metadata,'$.case.collection.publishable'))=1${sourceFilter} ORDER BY CASE WHEN COALESCE(json_extract(source_metadata,'$.catalog.sourceOnly'),0)=1 THEN 1 ELSE 0 END ASC,created_at ASC,id ASC LIMIT ?`,
   ).bind(...(options.sourceKey ? [new Date().toISOString(), options.sourceKey, options.fetchLimit] : [new Date().toISOString(), options.fetchLimit])).all<SummaryCandidateRow>());
   return orderSummaryCandidatesRoundRobin(rows);
 }
@@ -600,6 +601,19 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
     }, options.gateway
       ? { gateway: options.gateway, allowProviderFallback: false }
       : { provider: "gemini", model: options.model, providerApiKeys: { gemini: options.apiKeys }, allowProviderFallback: true });
+    if (options.gateway) {
+      const audit = auditLegalEvidence({
+        sourceKey: row.source_key,
+        originalTitle: row.original_title,
+        cleanedText: row.cleaned_text,
+      }, summary);
+      // Hold risky Gateway output before durable summary/publication writes.
+      // Only safe finding codes enter failure metadata, never raw text.
+      if (audit.status !== "pass") {
+        throw new Error("summary_gateway.legal_evidence_review_required:"
+          + audit.findings.map(f => f.code).join(","));
+      }
+    }
     const createEmbedding = options.createEmbedding ?? createEmbeddingArtifact;
     embedding = await createEmbedding(summary, { apiKeys: options.apiKeys, provider: "gemini" }).catch(() => null);
   } catch (error) {
@@ -607,7 +621,9 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
     const retryable = isGlobalSummaryBackoff(message)
       || /timeout|temporar| 5\d\d\b/i.test(message)
       || /^summary_gateway\.(?:empty_response|request_failed(?:$| (?:408|429|5\d\d)\b))/.test(message);
-    const errorClass = classifySummaryError(message, retryable);
+    const errorClass = message.startsWith("summary_gateway.legal_evidence_review_required:")
+      ? "summary_gateway.legal_evidence_review_required"
+      : classifySummaryError(message, retryable);
     const errorMetadata = { message, retryable, requestedProvider: options.gateway ? "cloudflare-ai-gateway" : "gemini", requestedModel: options.gateway ? `dynamic/${options.gateway.route}` : options.model ?? null };
     const status = forceAllowed || retryable ? row.status : "failed_summary";
     const now = new Date().toISOString();

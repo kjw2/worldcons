@@ -73,6 +73,7 @@ export const P3_PUBLICATION_ELIGIBLE_PREDICATE = `
     )
     AND json_valid(a.source_metadata)
     AND COALESCE(json_extract(a.source_metadata,'$.collection.publishable'),json_extract(a.source_metadata,'$.case.collection.publishable'))=1
+    AND lower(COALESCE(a.review_state,'')) NOT IN ('needs_review','needs_triage','closed_private','rejected','blocked')
     AND COALESCE(p.state,'')<>'published'
 `;
 
