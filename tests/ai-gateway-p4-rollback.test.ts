@@ -59,12 +59,12 @@ test("P4 only explicit valid backend flags are accepted; missing gateway binding
   }
 });
 
-test("P4 source config keeps all flags on direct Gemini and includes a future AI binding without deploying", () => {
+test("P4 production source config enables Gateway for all four lanes and preserves native AI binding", () => {
   const json=readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8");
   const config=JSON.parse(json) as {ai?:{binding:string};vars:Record<string,string>};
   assert.equal(config.ai?.binding,"AI");
-  assert.equal(config.vars.WORLDCONS_SUMMARY_BACKEND,"direct-gemini");
-  for (const key of flags) assert.equal(config.vars[key],"direct-gemini");
+  assert.equal(config.vars.WORLDCONS_SUMMARY_BACKEND,"cloudflare-ai-gateway");
+  for (const key of flags) assert.equal(config.vars[key],"cloudflare-ai-gateway");
   assert.equal(config.vars.WORLDCONS_AI_GATEWAY_ROUTE,"gemini-flash-fallback");
   assert.equal(config.vars.WORLDCONS_AI_GATEWAY_ID,"default");
 });
