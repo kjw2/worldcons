@@ -10,6 +10,7 @@ export type LegalEvidenceCode =
   | "unsubstantiated_child_claim"
   | "unreliable_legal_terminology"
   | "unsupported_deportation_direction"
+  | "applicant_nationality_attribution_review"
   | "judgment_effective_date_ambiguous"
   | "party_citation_marked_sic"
   | "garbled_french_social_security_law_name"
@@ -79,6 +80,15 @@ export function auditLegalEvidence(source: SourceForLegalAudit, summary: Summary
     && !/Die Abschiebung der Beschwerdeführerin nach Deutschland/i.test(original)
     && /독일로(?:의)?\s*(?:강제)?(?:송환|추방)/.test(narrative)) {
     add("unsupported_deportation_direction", "block");
+  }
+  // This court decision calls her a Somali national explicitly "according to
+  // her own statements" (nach ihren Angaben). Do not silently promote a
+  // litigant-reported fact to a judicially verified attribute.
+  if (source.sourceKey === "de-bverfg"
+    && /nach\s+ihren\s+Angaben\s+somalische\s+Staatsangehörige/i.test(original)
+    && /소말리아\s*국적(?:의)?\s*(?:신청인|여성|원고)/.test(narrative)
+    && !/(?:신청인|본인)(?:의)?\s*(?:진술|주장|설명)|자신의\s*(?:진술|주장)|스스로\s*밝힌/.test(narrative)) {
+    add("applicant_nationality_attribution_review", "review");
   }
   if (source.sourceKey === "fr-conseil-constitutionnel"
     && /date de la publication de la présente décision/i.test(original)

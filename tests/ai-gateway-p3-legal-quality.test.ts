@@ -122,6 +122,24 @@ test("P4 source audit catches wrong direction of German deportation", () => {
   assert.equal(corrected.legalAccuracyVerified, false);
 });
 
+test("P4 reviews unqualified nationality that the German applicant only reported herself", () => {
+  const source={...german,cleanedText:german.cleanedText+
+    " Die Beschwerdeführerin ist nach ihren Angaben somalische Staatsangehörige."};
+  const categorical=sample({
+    koreanTitle:"소말리아 국적 신청인의 헌법소원 잠정조치",
+  });
+  const review=auditLegalEvidence(source,categorical);
+  assert.equal(review.status,"review");
+  assert.deepEqual(review.findings.map(x=>x.code),["applicant_nationality_attribution_review"]);
+  const qualified=sample({
+    koreanTitle:"신청인에 대한 강제송환 잠정 금지",
+    summary:{...sample().summary,coreSummary:[
+      "신청인 자신의 진술에 따르면 소말리아 국적이며, 법원은 송환을 잠정 금지했습니다.",
+    ]},
+  });
+  assert.equal(auditLegalEvidence(source,qualified).status,"pass");
+});
+
 test("P4 French effect starts on DECISION publication, never vague law promulgation", () => {
   const source = {
     sourceKey: "fr-conseil-constitutionnel",
@@ -176,4 +194,6 @@ test("P4 live summary prompt cautions against all three observed baseline legal 
   assert.match(SUMMARY_SYSTEM_PROMPT, /publication OF THE DECISION/i);
   assert.match(SUMMARY_SYSTEM_PROMPT, /citation as "\[sic\]"/i);
   assert.match(SUMMARY_SYSTEM_PROMPT, /사회보장재정법/);
+  assert.match(SUMMARY_SYSTEM_PROMPT, /originalTitle exactly/);
+  assert.match(SUMMARY_SYSTEM_PROMPT, /nach ihren Angaben/);
 });

@@ -24,6 +24,8 @@ Your task:
 - Do not invent legal provisions, holdings, facts, dates, parties, or procedural history.
 - Distinguish litigants' allegations, lower-court reasoning, and the deciding court's actual holding. Never restate a party's constitutional claim as the deciding court's adopted rule.
 - Do not infer the litigants' age, minor/child status, nationality, case type, or other factual attributes unless they are clearly supported by the provided original text.
+- Copy the supplied "Original title" into the output originalTitle exactly, without translation, editing, normalization, or reformatting.
+- If the source reports an applicant's nationality "nach ihren Angaben" or "according to her statements", explicitly qualify it as the applicant's own statement, not an independently verified court finding.
 - Mention a referenced constitutional article as a litigant's argument when it appears only in a pleaded claim; do not misattribute it to the deciding court.
 - In deportation and removal cases, distinguish an order concerning removal OF a person from removal TO a destination country. Never invent the destination from the court's location.
 - Distinguish when the effects of a constitutional decision begin upon publication OF THE DECISION from an underlying statute's original promulgation or effective date.

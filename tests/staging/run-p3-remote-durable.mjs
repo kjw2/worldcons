@@ -8,6 +8,7 @@ import { join } from "node:path";
  * runs actual durable handlers + BYOK Gateway, then removes every resource.
  */
 const id=randomBytes(5).toString("hex");
+const officialG1Mode=process.argv.includes("--official-g1");
 const prefix="worldcons-p3-remote-"+id;
 const token=randomBytes(32).toString("hex");
 const resources={
@@ -32,7 +33,7 @@ function command(args,timeout=90000) {
     cwd:process.cwd(),encoding:"utf8",timeout,maxBuffer:12*1024*1024,
   });
   const all=String(r.stdout||"")+"\n"+String(r.stderr||"");
-  return {ok:r.status===0,code:r.status,stdout:String(r.stdout||""),raw:all,
+  return {ok:r.status===0,code:r.status,timeoutCode:r.error?.code||null,stdout:String(r.stdout||""),raw:all,
     safe:all.replaceAll(token,"[redacted]").replace(/P3_REMOTE_AUTH[^\r\n]*/g,"P3_REMOTE_AUTH: [redacted]")};
 }
 const wait=(ms)=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -48,12 +49,40 @@ function combinedMigration(dir) {
   writeFileSync(dest,sql,{mode:0o600});
   return {dest,files:files.length,bytes:sql.length};
 }
-async function call(path) {
+async function fetchOfficialG1() {
+  const url="https://www.bverfg.de/e/rk20261015_2bvr173526";
+  const response=await fetch(url,{
+    headers:{"User-Agent":"WorldCons-P4-isolated-G1-canary/1.0"},
+    signal:AbortSignal.timeout(25000),
+  });
+  if(!response.ok) throw Error("official German source unavailable: HTTP "+response.status);
+  const html=await response.text();
+  const text=html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi," ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi," ")
+    .replace(/<[^>]+>/g," ")
+    .replace(/&nbsp;|&shy;|&#160;|&#xA0;/gi," ")
+    .replace(/&amp;/gi,"&")
+    .replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n)))
+    .replace(/\s+/g," ").trim();
+  const position=text.indexOf("2 BvR 1735/26");
+  const cleanedText=position>=0
+    ?text.slice(Math.max(0,position-140),position+7500).trim():"";
+  if(cleanedText.length<1000||cleanedText.length>20000
+    ||!cleanedText.includes("Die Abschiebung der Beschwerdeführerin")
+    ||!cleanedText.includes("längstens für die Dauer von sechs Monaten")) {
+    throw Error("official German source does not contain expected judicial anchors");
+  }
+  console.log(JSON.stringify({step:"official-source",court:"BVerfG",case:"2 BvR 1735/26",
+    http:response.status,sourceChars:cleanedText.length}));
+  return {text:cleanedText,title:"Beschluss vom 15. Oktober 2026",url};
+}
+async function call(path, payload={}) {
   const started=Date.now();
   const response=await fetch(workerUrl+path,{
     method:"POST",
     headers:{"x-p3-remote-auth":token,"content-type":"application/json"},
-    body:"{}",
+    body:JSON.stringify(payload),
     signal:AbortSignal.timeout(185000),
   });
   const raw=await response.text();
@@ -81,6 +110,9 @@ function assess(lane,data,replay=false) {
   if(!r.summaryStored||!r.schemaValid||!r.titleRetained||r.provider!=="cloudflare-ai-gateway") {
     throw Error(lane+" durable summary or provenance invalid");
   }
+  if(officialG1Mode && lane==="g1" && r.legalAudit?.status==="block") {
+    throw Error("official G1 legal audit blocked summary");
+  }
   if(lane==="g4"&&(r.publishable!==false||r.reviewRequired!==true||r.reviewState!=="needs_review"||!r.actualRemoteR2)) {
     throw Error("G4 private hold or R2 verification invalid");
   }
@@ -91,6 +123,7 @@ function assess(lane,data,replay=false) {
 }
 
 try {
+  const officialG1=officialG1Mode?await fetchOfficialG1():null;
   for(const dir of ["core","ingest","ops"]) {
     const result=command(["d1","create",resources[dir],"--location","apac"],95000);
     if(result.ok) {
@@ -100,7 +133,7 @@ try {
       if(!match) throw Error("created D1 "+dir+" but CLI did not report UUID");
       ids[dir]=match[1];
       console.log(JSON.stringify({step:"d1-created",kind:dir,name:resources[dir]}));
-    } else throw Error("D1 "+dir+" creation failed: "+result.safe.slice(-450));
+    } else throw Error("D1 "+dir+" creation failed ("+(result.timeoutCode||result.code)+"): "+result.safe.slice(-450));
   }
   const bucket=command(["r2","bucket","create",resources.bucket,"--location","apac"],95000);
   requireResult(bucket,"r2 bucket create");
@@ -144,11 +177,11 @@ try {
 
   let seeded;
   for(let retry=0;retry<5;retry++){
-    try{seeded=await call("/seed");break;}
+    try{seeded=await call("/seed",officialG1?{officialG1}:{});break;}
     catch(error){if(retry===4)throw error;await wait(3400);}
   }
   console.log(JSON.stringify({step:"seed",...seeded.result}));
-  for(const lane of ["g1","g2","g3","g4"]) {
+  for(const lane of officialG1Mode?["g1"]:["g1","g2","g3","g4"]) {
     const first=await call("/"+lane);
     assess(lane,first);
     console.log(JSON.stringify({step:"durable-run",...first.result,elapsedMs:first.ms}));
@@ -156,10 +189,13 @@ try {
     assess(lane,replay,true);
     console.log(JSON.stringify({step:"durable-replay",lane,aiRequests:replay.result.aiRequests,outcome:replay.result.outcome,admin:replay.result.admin||undefined}));
   }
-  const negative=await call("/g1-429");
-  assess("g1-429",negative);
-  console.log(JSON.stringify({step:"negative-429",...negative.result}));
-  console.log(JSON.stringify({step:"verdict",allFourDurable:true,replaySafe:true,privateHold:true,productionUntouched:true}));
+  if(!officialG1Mode) {
+    const negative=await call("/g1-429");
+    assess("g1-429",negative);
+    console.log(JSON.stringify({step:"negative-429",...negative.result}));
+  }
+  console.log(JSON.stringify({step:"verdict",realOfficialG1:officialG1Mode,
+    allFourDurable:!officialG1Mode,replaySafe:true,privateHold:true,productionUntouched:true}));
 } catch(error) {
   err(error instanceof Error?error.message:String(error));
 } finally {
@@ -170,18 +206,19 @@ try {
     } catch(error) { err("R2 object cleanup: "+String(error).slice(0,220)); }
   }
   // Delete Worker *first* so no live binding can point to a deleted database.
-  {
+  if(created.worker) {
     const res=command(["delete",resources.worker,"--force"],95000);
     console.log(JSON.stringify({step:"cleanup-worker",removed:res.ok,name:resources.worker}));
     if(!res.ok && created.worker)err("Worker deletion failed: "+res.safe.slice(-240));
   }
-  {
+  if(created.bucket) {
     let res=command(["r2","bucket","delete",resources.bucket],95000);
     if(!res.ok&&created.bucket){await wait(2000);res=command(["r2","bucket","delete",resources.bucket],95000);}
     console.log(JSON.stringify({step:"cleanup-bucket",removed:res.ok||!created.bucket,name:resources.bucket}));
     if(!res.ok&&created.bucket)err("R2 bucket deletion failed: "+res.safe.slice(-260));
   }
   for(const dir of ["ops","ingest","core"]) {
+    if(!created[dir]) continue;
     let res=command(["d1","delete",resources[dir],"--skip-confirmation"],95000);
     if(!res.ok&&created[dir]){await wait(2200);res=command(["d1","delete",resources[dir],"--skip-confirmation"],95000);}
     console.log(JSON.stringify({step:"cleanup-d1",kind:dir,removed:res.ok||!created[dir],name:resources[dir]}));
