@@ -321,7 +321,9 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
       .map((key) => key?.trim())
       .filter((key): key is string => Boolean(key));
-    const gateway = resolveSummaryGateway(env, input.source);
+    // Legacy worldcons-ingest versions omit the lane from this RPC. Infer the
+    // method's scheduled lane instead of silently reverting to direct Gemini.
+    const gateway = resolveSummaryGateway(env, input.source ?? "scheduled");
     return runD1SummaryDrain({
       ...input,
       apiKeys,
@@ -341,7 +343,9 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
     const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
       .map((key) => key?.trim()).filter((key): key is string => Boolean(key));
-    const gateway = resolveSummaryGateway(env, input.source);
+    // Legacy worldcons-ingest versions omit the lane from this RPC. Infer G1
+    // only for this per-article entrypoint; the generic resolver stays strict.
+    const gateway = resolveSummaryGateway(env, input.source ?? "ingest");
     if (input.requestedProvider === "cloudflare-ai-gateway" && !gateway) throw new Error("summary_gateway.not_enabled");
     if (gateway && input.model) throw new Error("summary_gateway.model_override_forbidden");
     return runD1SummarizeArticle({

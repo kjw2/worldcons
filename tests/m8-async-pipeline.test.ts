@@ -135,7 +135,7 @@ test("translation native executor invokes the main Worker RPC with quota-paced d
   });
   assert.equal(stepName, "native-translation-drain");
   assert.equal((stepOptions as { timeout: string }).timeout, "50 minutes");
-  assert.deepEqual(call, { limit: 5, maxPasses: 1, retryAttempts: 1, retryDelayMs: 65_000 });
+  assert.deepEqual(call, { source: "scheduled", limit: 5, maxPasses: 1, retryAttempts: 1, retryDelayMs: 65_000 });
   assert.equal((result as { kind: string }).kind, "translation-drain");
   const executor = fs.readFileSync(path.join(root, "lib/cloudflare/async-pipeline/native-executor.ts"), "utf8");
   assert.match(executor, /runSummaryDrain\(/u);

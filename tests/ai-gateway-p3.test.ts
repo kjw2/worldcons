@@ -238,3 +238,20 @@ test("P3 safety tests keep authenticated admin mutation and US private approval 
   assert.match(privateUs, /hasPublicationRow\(db, articleId\)/);
   assert.match(privateUs, /hasApprovalReceipt\(db, articleId\)/);
 });
+
+test("P4 legacy source-less ingest RPC calls retain G1 and G2 Gateway routing", () => {
+  const worker = readFileSync(new URL("../worker/index.ts", import.meta.url), "utf8");
+  const gatewayCode = readFileSync(new URL("../lib/ai/gateway-summary.ts", import.meta.url), "utf8");
+  assert.match(worker, /runSummaryDrain\([\s\S]*?resolveSummaryGateway\(env, input\.source \?\? "scheduled"\)/u);
+  assert.match(worker, /runSummaryArticle\([\s\S]*?resolveSummaryGateway\(env, input\.source \?\? "ingest"\)/u);
+  assert.match(gatewayCode, /if \(!source\) return undefined;/u, "other unspecified lanes remain fail-closed");
+  const ai: GatewaySummaryAiBinding = { async run() { throw new Error("not invoked"); } };
+  const env: GatewaySummaryEnv = {
+    AI: ai,
+    WORLDCONS_SUMMARY_BACKEND_G1: "cloudflare-ai-gateway",
+    WORLDCONS_SUMMARY_BACKEND_G2: "cloudflare-ai-gateway",
+  };
+  assert.equal(resolveSummaryGateway(env, "ingest")?.route, "gemini-flash-fallback");
+  assert.equal(resolveSummaryGateway(env, "scheduled")?.route, "gemini-flash-fallback");
+  assert.equal(resolveSummaryGateway(env, undefined), undefined);
+});
