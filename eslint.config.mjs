@@ -25,6 +25,15 @@ const eslintConfig = [
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  {
+    // CommonJS operator CLIs legitimately use require(); the TypeScript rule is
+    // meant for ESM/TS modules, not explicit .cjs entrypoints.
+    files: ["**/*.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-var-requires": "off",
+    },
+  },
 ];
 
 export default eslintConfig;
