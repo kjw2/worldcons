@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import test from "node:test";
 import { setRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
-import { runD1SummaryDrain, runD1SummarizeArticle, runD1SyncSummaryTags } from "@/lib/cloudflare/summary/d1-summary-drain";
+import { runD1SummaryDrain, runD1SummarizeArticle, runD1SyncSummaryTags, SUMMARY_RETRY_EXHAUSTED_CODE, SUMMARY_RETRY_MAX_ATTEMPTS } from "@/lib/cloudflare/summary/d1-summary-drain";
 import type { GatewaySummaryConfig } from "@/lib/ai/gateway-summary";
 import { runD1PublicationDrain, runD1PublishArticle } from "@/lib/cloudflare/publication/d1-publication-drain";
 
@@ -606,6 +606,42 @@ test("D1 summary failure persists status, structured triage, and lifecycle atten
     const article = db.core.prepare("SELECT status,translation_status,error_class,review_state FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get();
     assert.deepEqual({ ...article }, { status: "failed_summary", translation_status: "failed", error_class: "summary.model_error", review_state: "needs_triage" });
     assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_lifecycle_events_p2 WHERE reason_code='legacy.summary.failed'").get()?.count, 1);
+  } finally {
+    close(db);
+  }
+});
+
+test("a retryable summary failure is bounded and becomes an explicit operator-visible exhaustion", async () => {
+  const db = setup();
+  try {
+    db.core.prepare("UPDATE articles SET translation_attempt_count=?,translation_status='pending' WHERE id='11111111-1111-4111-8111-111111111111'").run(SUMMARY_RETRY_MAX_ATTEMPTS - 1);
+    let calls = 0;
+    const first = await runD1SummaryDrain({
+      limit: 1, maxPasses: 1, apiKeys: ["test-key"],
+      summarize: async () => { calls += 1; throw new Error("provider timeout"); },
+    });
+    assert.equal(calls, 1);
+    assert.equal(first.failedCount, 1);
+    assert.equal(first.status, "failed", "an exhausted retry is a terminal failure, not an endless deferral");
+    const exhausted = db.core.prepare("SELECT status,translation_status,error_class,translation_next_attempt_at,translation_attempt_count FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get();
+    assert.deepEqual({ ...exhausted }, {
+      status: "failed_summary", translation_status: "failed", error_class: SUMMARY_RETRY_EXHAUSTED_CODE,
+      translation_next_attempt_at: null, translation_attempt_count: SUMMARY_RETRY_MAX_ATTEMPTS,
+    });
+    const second = await runD1SummaryDrain({
+      limit: 1, maxPasses: 1, apiKeys: ["test-key"],
+      summarize: async () => { calls += 1; throw new Error("provider timeout"); },
+    });
+    assert.equal(calls, 1, "an exhausted row is excluded from automatic selection");
+    assert.equal(second.candidateCount + second.attemptedCount, 0);
+    // The audited operator recovery is an explicit admin targeted retry.
+    const recovered = await runD1SummarizeArticle({
+      articleId: "11111111-1111-4111-8111-111111111111", source: "admin", apiKeys: ["test-key"],
+      summarize: async () => goodSummary as never, createEmbedding: async () => null,
+    });
+    assert.equal(recovered.result.status, "summarized");
+    const reset = db.core.prepare("SELECT status,error_class,translation_attempt_count FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get();
+    assert.deepEqual({ ...reset }, { status: "summarized", error_class: null, translation_attempt_count: 0 });
   } finally {
     close(db);
   }

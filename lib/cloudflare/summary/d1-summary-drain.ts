@@ -45,9 +45,19 @@ interface SummaryCandidateRow {
   translation_started_at?: string | null;
   translation_provider?: string | null;
   translation_model?: string | null;
+  translation_attempt_count?: number | null;
 }
 
-const SUMMARY_CANDIDATE_COLUMNS = "id,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,original_published_at,cleaned_text,summary_json,korean_title,status,content_hash,source_metadata,error_class,error_context,review_state,created_at,updated_at,translation_status,translation_started_at,translation_provider,translation_model";
+/**
+ * Bounded retry budget for retryable summary failures. Without a cap a
+ * permanently failing provider/article pair is re-attempted every 15 minutes
+ * forever. An exhausted row is excluded from automatic selection; an explicit
+ * admin targeted retry clears the budget and is the audited recovery path.
+ */
+export const SUMMARY_RETRY_MAX_ATTEMPTS = 8;
+export const SUMMARY_RETRY_EXHAUSTED_CODE = "summary.retry_exhausted";
+
+const SUMMARY_CANDIDATE_COLUMNS = "id,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,original_published_at,cleaned_text,summary_json,korean_title,status,content_hash,source_metadata,error_class,error_context,review_state,created_at,updated_at,translation_status,translation_started_at,translation_provider,translation_model,translation_attempt_count";
 const SUMMARY_SUCCESS_WRITE_MAX_ATTEMPTS = 3;
 
 type SummarySuccessWriteFailure =
@@ -241,7 +251,7 @@ async function recoverStaleSummarizing(options: { limit: number; sourceKey?: str
 async function selectCandidates(options: { limit: number; sourceKey?: string; fetchLimit: number }) {
   const sourceFilter = options.sourceKey ? " AND source_key = ?" : "";
   const rows = ensureSuccess(await d1().prepare(
-    `SELECT ${SUMMARY_CANDIDATE_COLUMNS} FROM articles WHERE status IN ('cleaned','failed_summary') AND summarized_at IS NULL AND translation_status IN ('pending','failed') AND COALESCE(error_class,'') <> 'summary_gateway.legal_evidence_review_required' AND (translation_next_attempt_at IS NULL OR translation_next_attempt_at<=?) AND json_valid(source_metadata) AND COALESCE(json_extract(source_metadata,'$.collection.publishable'),json_extract(source_metadata,'$.case.collection.publishable'))=1${sourceFilter} ORDER BY CASE WHEN COALESCE(json_extract(source_metadata,'$.catalog.sourceOnly'),0)=1 THEN 1 ELSE 0 END ASC,created_at ASC,id ASC LIMIT ?`,
+    `SELECT ${SUMMARY_CANDIDATE_COLUMNS} FROM articles WHERE status IN ('cleaned','failed_summary') AND summarized_at IS NULL AND translation_status IN ('pending','failed') AND COALESCE(error_class,'') NOT IN ('summary_gateway.legal_evidence_review_required','${SUMMARY_RETRY_EXHAUSTED_CODE}') AND (translation_next_attempt_at IS NULL OR translation_next_attempt_at<=?) AND json_valid(source_metadata) AND COALESCE(json_extract(source_metadata,'$.collection.publishable'),json_extract(source_metadata,'$.case.collection.publishable'))=1${sourceFilter} ORDER BY CASE WHEN COALESCE(json_extract(source_metadata,'$.catalog.sourceOnly'),0)=1 THEN 1 ELSE 0 END ASC,created_at ASC,id ASC LIMIT ?`,
   ).bind(...(options.sourceKey ? [new Date().toISOString(), options.sourceKey, options.fetchLimit] : [new Date().toISOString(), options.fetchLimit])).all<SummaryCandidateRow>());
   return orderSummaryCandidatesRoundRobin(rows);
 }
@@ -365,8 +375,21 @@ export async function runD1SummarizeArticle(input: {
   const rows = ensureSuccess(await core.prepare(
     `SELECT ${SUMMARY_CANDIDATE_COLUMNS} FROM articles WHERE ${where} LIMIT 1`,
   ).bind(value).all<SummaryCandidateRow>());
-  const row = rows[0];
+  let row = rows[0];
   if (!row) throw new Error("summary_d1.article_not_found");
+  // An explicit operator (admin) retry is the audited recovery path for an
+  // exhausted automatic retry budget. It clears only the retry bookkeeping; the
+  // provider call, legal-evidence gate and publication gates still run.
+  if (input.source === "admin" && row.error_class === SUMMARY_RETRY_EXHAUSTED_CODE) {
+    const resetAt = new Date().toISOString();
+    const reset = await statementRun(core.prepare(
+      "UPDATE articles SET translation_attempt_count=0,translation_status='pending',translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,error_metadata=NULL,error_class=NULL,error_context=NULL,updated_at=? WHERE id=? AND updated_at=?",
+    ).bind(resetAt, row.id, row.updated_at));
+    if (reset.success === false || reset.error || changes(reset) !== 1) throw new Error("summary_d1.retry_reset_conflict");
+    const refreshed = await readSummaryCandidate(core, row.id);
+    if (!refreshed) throw new Error("summary_d1.article_not_found");
+    row = refreshed;
+  }
   if (input.source === "ingest" && row.status === "summarized" && durableSummary(row)) {
     return {
       mode: "database" as const, articleId: row.id, slug: row.slug,
@@ -496,7 +519,7 @@ async function persistSummarySuccess(
     let storageFailed = false;
     try {
       saved = await statementRun(core.prepare(
-        "UPDATE articles SET status='summarized',translation_status=CASE WHEN lower(COALESCE(original_language,''))='ko' THEN 'not_required' ELSE 'translated' END,translated_at=?,translation_provider=?,translation_model=?,translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,summarized_at=?,summary_json=?,korean_title=?,error_metadata=NULL,error_class=NULL,error_context=NULL,review_state=?,embedding_provider=NULL,embedding_model=NULL,embedding_dimensions=NULL,embedding_input_hash=NULL,embedding_generated_at=NULL,updated_at=? WHERE id=? AND status=? AND updated_at=? AND content_hash IS ?",
+        "UPDATE articles SET status='summarized',translation_status=CASE WHEN lower(COALESCE(original_language,''))='ko' THEN 'not_required' ELSE 'translated' END,translated_at=?,translation_provider=?,translation_model=?,translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,translation_attempt_count=0,summarized_at=?,summary_json=?,korean_title=?,error_metadata=NULL,error_class=NULL,error_context=NULL,review_state=?,embedding_provider=NULL,embedding_model=NULL,embedding_dimensions=NULL,embedding_input_hash=NULL,embedding_generated_at=NULL,updated_at=? WHERE id=? AND status=? AND updated_at=? AND content_hash IS ?",
       ).bind(
         now,
         provider,
@@ -625,13 +648,20 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
       ? "summary_gateway.legal_evidence_review_required"
       : classifySummaryError(message, retryable);
     const errorMetadata = { message, retryable, requestedProvider: options.gateway ? "cloudflare-ai-gateway" : "gemini", requestedModel: options.gateway ? `dynamic/${options.gateway.route}` : options.model ?? null };
-    const status = forceAllowed || retryable ? row.status : "failed_summary";
+    const attemptsUsed = (Number(row.translation_attempt_count) || 0) + (forceAllowed ? 0 : 1);
+    const budgetExhausted = !forceAllowed && retryable && attemptsUsed >= SUMMARY_RETRY_MAX_ATTEMPTS;
+    const effectiveRetryable = retryable && !budgetExhausted;
+    const effectiveErrorClass = budgetExhausted ? SUMMARY_RETRY_EXHAUSTED_CODE : errorClass;
+    const effectiveMetadata = budgetExhausted
+      ? { ...errorMetadata, retryable: false, attempts: attemptsUsed, retryBudget: SUMMARY_RETRY_MAX_ATTEMPTS, exhausted: true }
+      : { ...errorMetadata, attempts: attemptsUsed, retryBudget: SUMMARY_RETRY_MAX_ATTEMPTS };
+    const status = forceAllowed || effectiveRetryable ? row.status : "failed_summary";
     const now = new Date().toISOString();
-    const translationStatus = forceAllowed ? row.translation_status ?? "translated" : retryable ? "pending" : "failed";
-    const nextAttemptAt = retryable ? new Date(Date.now() + 15 * 60_000).toISOString() : null;
+    const translationStatus = forceAllowed ? row.translation_status ?? "translated" : effectiveRetryable ? "pending" : "failed";
+    const nextAttemptAt = effectiveRetryable ? new Date(Date.now() + 15 * 60_000).toISOString() : null;
     const saved = await statementRun(core.prepare(
       "UPDATE articles SET status=?,translation_status=?,translation_error_code=?,translation_error_summary=?,translation_next_attempt_at=?,error_metadata=?,error_class=?,error_context=?,review_state=?,updated_at=? WHERE id=? AND status=? AND updated_at=? AND content_hash IS ?",
-    ).bind(status, translationStatus, errorClass, message.slice(0,500), nextAttemptAt, JSON.stringify(errorMetadata), errorClass, JSON.stringify(errorMetadata), retryable ? ARTICLE_REVIEW_STATE.RETRY_LATER : ARTICLE_REVIEW_STATE.NEEDS_TRIAGE, now, row.id, claimed.claim.claimedStatus, claimed.claim.claimUpdatedAt, claimed.claim.contentHash));
+    ).bind(status, translationStatus, effectiveErrorClass, message.slice(0,500), nextAttemptAt, JSON.stringify(effectiveMetadata), effectiveErrorClass, JSON.stringify(effectiveMetadata), effectiveRetryable ? ARTICLE_REVIEW_STATE.RETRY_LATER : ARTICLE_REVIEW_STATE.NEEDS_TRIAGE, now, row.id, claimed.claim.claimedStatus, claimed.claim.claimUpdatedAt, claimed.claim.contentHash));
     if (saved.success === false || saved.error) throw new Error("summary_d1.failure_write_failed");
     if (changes(saved) !== 1) {
       const current = await readSummaryCandidate(core, row.id);
@@ -653,10 +683,10 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
       source: forceAllowed ? "summary.resummary" : "summary.generate",
       reasonCode: "legacy.summary.failed",
       processingState: forceAllowed ? "complete" : "ready",
-      ...(retryable ? {} : { reviewState: "needs_review" as const }),
-      attention: { operation: "raise", code: errorClass, retryable, severity: "high", source: "processing" },
+      ...(effectiveRetryable ? {} : { reviewState: "needs_review" as const }),
+      attention: { operation: "raise", code: effectiveErrorClass, retryable: effectiveRetryable, severity: "high", source: "processing" },
     });
-    return { status: "failed" as const, errorMessage: message, retryable };
+    return { status: "failed" as const, errorMessage: message, retryable: effectiveRetryable };
   }
   const provider = summary.aiMetadata?.provider ?? "gemini";
   const model = summary.aiMetadata?.model ?? options.model ?? null;
