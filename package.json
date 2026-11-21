@@ -86,7 +86,7 @@
     "test:plugin": "tsx --test tests/chatgpt-plugin-package.test.ts tests/chatgpt-plugin-mcp.test.ts tests/chatgpt-plugin-guide.test.ts",
     "test:ingest-workflow": "tsx --test tests/ingest-workflow-hardening.test.ts",
     "test:ingest-stages": "tsx --test tests/ingest-stage-pipeline.test.ts tests/ingest-stage-handlers.test.ts tests/ingest-stage-article-services.test.ts tests/ingest-stage-redrive.test.ts",
-    "test:native-crawler": "tsx --test tests/native-crawler.test.ts",
+    "test:native-crawler": "tsx --test tests/native-crawler.test.ts tests/spain-incremental-recovery.test.ts tests/incremental-checkpoint-d1.test.ts",
     "test:spain-decision-date": "tsx --test tests/spain-decision-date-recovery.test.ts",
     "test:spain-decision-date-correction": "tsx --test tests/spain-decision-date-correction.test.ts",
     "test:spain-decision-date-heading": "tsx --test tests/spain-decision-date-heading.test.ts",

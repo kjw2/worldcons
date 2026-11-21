@@ -2,6 +2,12 @@ import { drainSearchMetadataRepairs } from "@/lib/cloudflare/search-projection/m
 import {runDiscoveryCoverageScheduled,type DiscoveryCoverageEnvironment} from "./discovery-coverage-scheduled";
 import { stagedE2EOptionsFromEnvironment } from "./staged-e2e";
 import { CLOUD_IAM_OPERATOR_ACTOR, parseSpainDateOperatorCommand } from "./spain-date-operator";
+import {
+  pairedSpainStagedOwnership,
+  parseSpainIncrementalRecoveryCommand,
+  SPAIN_INCREMENTAL_RECOVERY_DAYS,
+  SPAIN_INCREMENTAL_SOURCE,
+} from "./spain-incremental-recovery";
 import { applySpainDateOnlyRepublication } from "@/lib/ingest/spain-date-only-apply";
 import { consumeSearchRepair } from "@/lib/cloudflare/e2e/search-repair-consumer";
 import { verifySearchRepair } from "@/lib/cloudflare/e2e/search-verification";
@@ -27,6 +33,7 @@ import { resolveM8CrawlerSourcePolicy } from "../../../lib/cloudflare/async-pipe
 import { INGEST_STAGE_NAMES, INGEST_STAGE_QUEUES, type IngestStage } from "../../../lib/cloudflare/ingest-stages/contracts";
 import { ingestStageGateFromEnvironment, isIngestStageEnabled, resolveIngestBootstrapSources } from "../../../lib/cloudflare/ingest-stages/flags";
 import { dispatchIngestStagePass, reconcileIngestStageDispatch, type IngestStageQueueSender } from "../../../lib/cloudflare/ingest-stages/dispatcher";
+import { countIngestCoreBridgeDeadLetters, countIngestStageDispatchDeadLetters } from "../../../lib/cloudflare/ingest-stages/outbox";
 import { consumeIngestStageBatch, type IngestStageHandlerRegistry } from "./ingest-stage-consumer";
 import { createIngestStageHandlers, enqueueIngestStageDiscovery, enqueueCanaryDiscovery, auditUsManualApprovalGuardOnce } from "./ingest-stage-handlers";
 import { canarySourceGateAllows, CANARY_SOURCE_KEYS } from "../../../lib/cloudflare/ingest-stages/canary";
@@ -945,6 +952,44 @@ export class WorldconsSpainDateOperatorWorkflow extends WorkflowEntrypoint<Env, 
   }
 }
 
+/**
+ * IAM-triggered single normal discovery job; no public HTTP endpoint, direct
+ * Core insert, fake approval, or alternative publication path.
+ */
+export class WorldconsSpainIncrementalRecoveryWorkflow extends WorkflowEntrypoint<Env, unknown> {
+  async run(event: WorkflowEvent<unknown>, step: WorkflowStep) {
+    const command = parseSpainIncrementalRecoveryCommand(event.payload);
+    if (!command.ok) throw new NonRetryableError(command.reason);
+    const flags = ingestStageGateFromEnvironment(this.env as unknown as Record<string, string | undefined>);
+    if (!isIngestStageEnabled(flags, "discovery")
+      || !pairedSpainStagedOwnership(
+        this.env.WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST,
+        this.env.M8_CRAWLER_SOURCE_EXCLUDE,
+      )) throw new NonRetryableError("spain_incremental.staged_ownership_unavailable");
+    const queue = this.env.STAGE_QUEUE_DISCOVERY as unknown as IngestStageQueueSender | undefined;
+    if (!queue) throw new NonRetryableError("spain_incremental.discovery_queue_unavailable");
+    // The instance's UTC day must stay stable if Workflow retries the seed step.
+    const now = event.timestamp.toISOString();
+    const seeded = await step.do("seed-ordinary-spain-postfix-discovery", { timeout: "2 minutes" }, () =>
+      enqueueIngestStageDiscovery(this.env.WORLDCONS_INGEST, this.env.WORLDCONS_RAW, {
+        sourceKey: SPAIN_INCREMENTAL_SOURCE, limit: 1,
+        rangeDays: SPAIN_INCREMENTAL_RECOVERY_DAYS, now,
+      }));
+    const dispatched = await step.do("dispatch-ordinary-spain-postfix-discovery", { timeout: "2 minutes" }, () =>
+      dispatchIngestStagePass({
+        ingestDb: this.env.WORLDCONS_INGEST, queue, stage: "discovery",
+        workerId: `spain-incremental-recovery:${event.instanceId}`,
+        limit: 1, leaseSeconds: 300, now: new Date().toISOString(), jobId: seeded.jobId,
+      }));
+    return {
+      sourceKey: SPAIN_INCREMENTAL_SOURCE, jobId: seeded.jobId,
+      created: seeded.created, enqueued: dispatched.enqueued,
+      rangeDays: SPAIN_INCREMENTAL_RECOVERY_DAYS,
+      note: "Ordinary staged discovery; final translation, approval and public release are not bypassed.",
+    };
+  }
+}
+
 const STAGE_QUEUE_TO_STAGE: Readonly<Record<string, IngestStage>> = Object.freeze(
   Object.fromEntries(Object.entries(INGEST_STAGE_QUEUES).map(([stage, queue]) => [queue, stage as IngestStage])),
 );
@@ -1105,7 +1150,11 @@ async function runIngestStageScheduled(controller: ScheduledController, env: Env
         now,
       }));
     }
-    console.log(JSON.stringify({ event: "ingest_stage_dispatch", cron: controller.cron, reconciliation, passes }));
+    const [dispatchOutboxDeadLetters, bridgeOutboxDeadLetters] = await Promise.all([
+      countIngestStageDispatchDeadLetters(env.WORLDCONS_INGEST).catch(() => null),
+      countIngestCoreBridgeDeadLetters(env.WORLDCONS_INGEST).catch(() => null),
+    ]);
+    console.log(JSON.stringify({ event: "ingest_stage_dispatch", cron: controller.cron, reconciliation, passes, dispatchOutboxDeadLetters, bridgeOutboxDeadLetters }));
   } catch (error) {
     console.error(JSON.stringify({ event: "ingest_stage_dispatch_failed", cron: controller.cron, error: error instanceof Error ? error.message.slice(0, 300) : String(error) }));
   }

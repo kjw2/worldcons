@@ -254,6 +254,11 @@
       "binding": "SPAIN_DATE_OPERATOR_WORKFLOW",
       "name": "worldcons-spain-date-operator-v1",
       "class_name": "WorldconsSpainDateOperatorWorkflow"
+    },
+    {
+      "binding": "SPAIN_INCREMENTAL_RECOVERY_WORKFLOW",
+      "name": "worldcons-spain-incremental-recovery-v1",
+      "class_name": "WorldconsSpainIncrementalRecoveryWorkflow"
     }
   ]
 }
