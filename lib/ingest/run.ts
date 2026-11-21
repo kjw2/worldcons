@@ -46,6 +46,12 @@ import { isSpainMetadataOnlyNotice } from "@/lib/crawlee/spain-tribunal-constitu
 import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
 import { writeIngestionRunViaBoundary } from "@/lib/cloudflare/ingest-write/boundary-client";
 import {
+  isSpainPendingPromotionStale,
+  readSourceCollectionCheckpoint,
+  type SourceCollectionCheckpoint,
+} from "@/lib/cloudflare/ingest-write/ingestion-runs-read";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import {
   bverfgCandidateRetryDelayMs,
   shouldRetryBverfgCandidates,
 } from "@/lib/ingest/bverfg-candidate-retry";
@@ -241,36 +247,18 @@ function rangeStartForDays(days: number) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
 }
 
-interface SourceCollectionCheckpoint {
-  lastSuccessfulRunAt?: string;
-  lastVerifiedPublishedAt?: string;
-}
-
 async function loadSourceCollectionCheckpoint(sourceKey: string): Promise<SourceCollectionCheckpoint> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return {};
-
-  const { data } = await supabase
-    .from("ingestion_runs")
-    .select("finished_at, started_at, metadata")
-    .eq("source_key", sourceKey)
-    .eq("status", "completed")
-    .order("finished_at", { ascending: false, nullsFirst: false })
-    .limit(8);
-
-  const runs = data ?? [];
-  const latest = runs[0];
-  const lastSuccessfulRunAt = typeof latest?.finished_at === "string"
-    ? latest.finished_at
-    : typeof latest?.started_at === "string"
-      ? latest.started_at
-      : undefined;
-  for (const run of runs) {
-    const metadata = isRecord(run.metadata) ? run.metadata : {};
-    const verifiedAt = stringValue(metadata.lastVerifiedPublishedAt);
-    if (verifiedAt) return { lastSuccessfulRunAt, lastVerifiedPublishedAt: verifiedAt };
+  // Supabase was retired at the M13 cutover. The only durable checkpoint is the
+  // D1 `ingestion_runs` history written through the ingest-run boundary.
+  const ingest = getRuntimeD1Binding("worldcons_ingest");
+  if (!ingest) return {};
+  try {
+    return await readSourceCollectionCheckpoint(ingest, sourceKey);
+  } catch {
+    // A checkpoint read must never abort collection; falling back to the floor
+    // is the historical, safe behaviour (just wider than necessary).
+    return {};
   }
-  return { lastSuccessfulRunAt };
 }
 
 async function incrementalRangeDaysForSource(sourceKey: string, baseRangeDays?: number) {
@@ -287,25 +275,17 @@ async function incrementalRangeDaysForSource(sourceKey: string, baseRangeDays?: 
 
 async function spainPendingPromotionIsStale(pendingRecheckCount: number, promotedCount: number) {
   if (pendingRecheckCount === 0 || promotedCount > 0) return false;
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return false;
-  const { data } = await supabase
-    .from("ingestion_runs")
-    .select("metadata")
-    .eq("source_key", SPAIN_TC_SOURCE_KEY)
-    .eq("status", "completed")
-    .order("finished_at", { ascending: false, nullsFirst: false })
-    .limit(2);
-  const recent = data ?? [];
-  if (recent.length < 2) return false;
-  return recent.every((row) => {
-    const metadata = isRecord(row.metadata) ? row.metadata : {};
-    return numericMetadata(metadata.pendingRecheckCount) > 0 && numericMetadata(metadata.spainSourceTextPromotedCount) === 0;
-  });
-}
-
-function numericMetadata(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const ingest = getRuntimeD1Binding("worldcons_ingest");
+  if (!ingest) return false;
+  try {
+    return await isSpainPendingPromotionStale(ingest, {
+      sourceKey: SPAIN_TC_SOURCE_KEY,
+      pendingRecheckCount,
+      promotedCount,
+    });
+  } catch {
+    return false;
+  }
 }
 
 function isItemInDateRange(publishedAt: string | undefined, rangeStart: Date | undefined) {
