@@ -194,4 +194,3 @@ export async function reserveDiscoveryCandidates(db:D1RuntimeDatabase,bucket:Dis
   const stalledCaptureCount=Number(stalled.count);
   return {claimed,reserved,recovered,terminalLinked,pendingCount,oldestPendingAgeSeconds,stalledCaptureCount,requiresAttention:stalledCaptureCount>0||(pendingCount>0&&oldestPendingAgeSeconds>1800)};
 }
-
