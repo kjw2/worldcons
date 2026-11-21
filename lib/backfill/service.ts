@@ -3,9 +3,10 @@ import {
   type CaseBackfillRepository,
 } from "@/lib/backfill/repository";
 import { d1CaseBackfillRepository } from "@/lib/backfill/d1-repository";
-import type {
-  CaseBackfillAttemptAuthority,
-  CaseBackfillClaimedItem,
+import {
+  CASE_BACKFILL_MAX_RETRYABLE_ATTEMPTS,
+  type CaseBackfillAttemptAuthority,
+  type CaseBackfillClaimedItem,
   CaseBackfillFetchArtifact,
   CaseBackfillItemPhase,
   CaseBackfillNormalizationArtifact,
@@ -718,13 +719,17 @@ export async function runCaseBackfillPass(
       succeeded += 1;
     } catch (error) {
       if (context.signal.aborted) throw error;
-      const retryable = retryableError(error);
+      const transient = retryableError(error);
+      // A retryable error stops being retryable once this item's monotonic claim
+      // budget is spent. The transition is terminal (not another retry_wait),
+      // so the backlog cannot spin forever on one poisoned record.
+      const retryable = transient && (item.attemptCount ?? 0) < CASE_BACKFILL_MAX_RETRYABLE_ATTEMPTS;
       await repository.failItem({
         itemId: item.itemId,
         phase: itemPhase,
         authority: context.authority,
         disposition: retryable ? "retryable" : "terminal",
-        errorCode: errorCode(error, itemPhase),
+        errorCode: transient && !retryable ? "case_backfill.retry_exhausted" : errorCode(error, itemPhase),
         errorSummary: errorSummary(error),
         retryAt: retryable ? retryAt(dependencies.now()) : null,
       });

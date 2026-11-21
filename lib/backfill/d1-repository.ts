@@ -1,4 +1,4 @@
-import {
+﻿import {
   getRuntimeD1Binding,
   type D1RuntimeDatabase,
   type D1RuntimePreparedStatement,
@@ -12,6 +12,7 @@ import type {
   RecordNormalizationArtifactInput,
   SourceRequestPermitResult,
 } from "@/lib/backfill/repository";
+import { CASE_BACKFILL_MAX_RETRYABLE_ATTEMPTS } from "@/lib/backfill/types";
 import type {
   CaseBackfillAttemptAuthority,
   CaseBackfillClaimedItem,
@@ -479,6 +480,7 @@ async function claimOne(
       currentNormalizationArtifactId: nullableText(candidate.current_normalization_artifact_id),
       verifiedNormalizationArtifactId: nullableText(candidate.verified_normalization_artifact_id),
       publishedNormalizationArtifactId: nullableText(candidate.published_normalization_artifact_id),
+      attemptCount: numberValue(candidate.attempt_count),
       itemLeaseExpiresAt: leaseExpiresAt,
     };
   }
@@ -1476,14 +1478,20 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
     if (input.disposition === "retryable" && !input.retryAt) throw new Error("case_backfill.invalid_failure");
     const db = requiredBinding("worldcons_ingest");
     const now = new Date().toISOString();
-    const nextStatus = text(item.status) === "published" ? "published" : input.disposition === "retryable" ? "retry_wait" : "terminal_failure";
+    // Defense in depth: even if a caller asks for another retry, the monotonic
+    // claim budget wins. A spent budget becomes a terminal, operator-visible
+    // failure instead of an unbounded retry_wait loop.
+    const retryable = input.disposition === "retryable" && numberValue(item.attempt_count) < CASE_BACKFILL_MAX_RETRYABLE_ATTEMPTS;
+    const terminal = !retryable;
+    const nextStatus = text(item.status) === "published" ? "published" : retryable ? "retry_wait" : "terminal_failure";
+    const errorCode = terminal && input.disposition === "retryable" ? "case_backfill.retry_exhausted" : input.errorCode;
     const result = await run(db, `
       UPDATE source_backfill_items
       SET status=?,next_attempt_at=?,retry_phase=?,error_code=?,error_summary=?,
           claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,updated_at=?
       WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase=? AND lease_expires_at>?
-    `, [nextStatus, input.disposition === "retryable" ? input.retryAt : null, input.disposition === "retryable" ? input.phase : null,
-      input.errorCode.trim().slice(0,160), input.errorSummary.trim().slice(0,500) || null, now,
+    `, [nextStatus, retryable ? input.retryAt : null, retryable ? input.phase : null,
+      errorCode.trim().slice(0,160), input.errorSummary.trim().slice(0,500) || null, now,
       input.itemId, input.authority.attemptId, input.authority.fencingToken, input.phase, now]);
     if (changes(result) !== 1) throw new Error("case_backfill.item_lease_lost");
     await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,

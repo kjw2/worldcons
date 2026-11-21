@@ -30,9 +30,18 @@ export interface CaseBackfillPassInput {
   fetchContractVersion?: string;
 }
 
+/**
+ * Bounded retry budget for one backfill item. The claim increments
+ * `attempt_count`; a retryable failure at or beyond this budget becomes a
+ * terminal failure instead of looping in `retry_wait` forever.
+ */
+export const CASE_BACKFILL_MAX_RETRYABLE_ATTEMPTS = 8;
+
 export interface CaseBackfillClaimedItem {
   itemId: string;
   stableItemKey: string;
+  /** Monotonic claim count; also the durable retry budget source. */
+  attemptCount?: number;
   sourceRecordId: string | null;
   discoveredUrl: string;
   authorityUrl: string | null;

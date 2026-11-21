@@ -21,6 +21,7 @@ import {
 } from "../lib/crawlee/bverfg-inventory";
 import { loadCaseBackfillSourceStrategy } from "../lib/backfill/source-strategies";
 import { runCaseBackfillPass } from "../lib/backfill/service";
+import { CASE_BACKFILL_MAX_RETRYABLE_ATTEMPTS } from "../lib/backfill/types";
 import {
   BVERFG_FETCH_BATCH_LIMIT,
   DEFAULT_CASE_BACKFILL_BATCH_LIMIT,
@@ -944,4 +945,54 @@ test("Germany normalize excludes an unrecoverable official source instead of fai
   assert.equal(result.succeeded, 1);
   assert.equal(result.terminalFailed, 0);
   assert.equal(result.retryableFailed, 0);
+});
+
+test("a retryable backfill failure becomes terminal at the bounded claim budget", async () => {
+  const dispositions: Array<{ disposition: string; errorCode: string; retryAt: string | null }> = [];
+  let served = false;
+  const repository = {
+    getSnapshot: async () => snapshot,
+    getSourcePolicy: async () => ({
+      sourceKey: snapshot.sourceKey,
+      policyVersion: snapshot.sourcePolicyVersion,
+      normalizeReplayPolicy: "bounded_evidence" as const,
+      boundedReplayFields: ["sourceKey", "url", "canonicalUrl", "title", "publishedAt", "contentType", "text", "metadata"],
+      minRequestDelayMs: 30_000,
+      maxConcurrency: 1,
+      reviewDueAt: "2027-09-04T00:00:00.000Z",
+    }),
+    beginRun: async () => "00000000-0000-4000-8000-000000000421",
+    claimItems: async () => {
+      if (served) return [];
+      served = true;
+      return [{ ...item, attemptCount: CASE_BACKFILL_MAX_RETRYABLE_ATTEMPTS }];
+    },
+    extendItems: async (ids: string[]) => ids.length,
+    failItem: async (input: { disposition: string; errorCode: string; retryAt: string | null }) => {
+      dispositions.push({ disposition: input.disposition, errorCode: input.errorCode, retryAt: input.retryAt });
+    },
+    finishRun: async () => undefined,
+    countBacklog: async () => 0,
+  } as unknown as CaseBackfillRepository;
+  const result = await runCaseBackfillPass({
+    cohort: "catalog-backfill", snapshotId: snapshot.id, phase: "fetch", passNumber: 1, batchLimit: 10,
+    fetchContractVersion: "bverfg-official-fetch-v1",
+  }, {
+    authority: { attemptId: "00000000-0000-4000-8000-000000000422", runId: "00000000-0000-4000-8000-000000000423", fencingToken: "41", leaseExpiresAt: "2026-09-04T02:00:00.000Z" },
+    checkpoint: async () => undefined,
+    signal: new AbortController().signal,
+  }, {
+    repository,
+    loadAdapter: async () => ({
+      sourceKey: "de-bverfg", displayName: "Bundesverfassungsgericht", jurisdiction: "Germany",
+      baseUrl: "https://www.bundesverfassungsgericht.de", defaultLanguage: "de",
+      discover: async () => [], normalize: async () => normalized(),
+      fetchItem: async () => { throw new Error("network timeout"); },
+    }),
+    now: () => new Date("2026-09-04T00:00:00.000Z"),
+    environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
+  });
+  assert.deepEqual(dispositions, [{ disposition: "terminal", errorCode: "case_backfill.retry_exhausted", retryAt: null }]);
+  assert.equal(result.retryableFailed, 0);
+  assert.equal(result.terminalFailed, 1);
 });

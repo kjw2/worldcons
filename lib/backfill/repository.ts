@@ -84,6 +84,7 @@ function mapClaim(row: Row): CaseBackfillClaimedItem {
     currentNormalizationArtifactId: nullableText(row, "current_normalization_artifact_id"),
     verifiedNormalizationArtifactId: nullableText(row, "verified_normalization_artifact_id"),
     publishedNormalizationArtifactId: nullableText(row, "published_normalization_artifact_id"),
+    attemptCount: numberValue(row, "attempt_count"),
     itemLeaseExpiresAt: text(row, "item_lease_expires_at"),
   };
 }
