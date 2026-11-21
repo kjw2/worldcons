@@ -240,7 +240,7 @@ test("M5 terminal source, duplicate and human-review dead letters are linked wit
   assert.equal((await handlers.discovery!(context)).status,"succeeded");
   const blockedItem=f.ingest.rows("ingest_discovery_items_v1").find(x=>x.canonical_url===blocked.url)!;
   assert.ok(blockedItem);
-  const dead=await deadLetterCapturedItem(f,blockedItem,"crawler.official_404_unresolved",prior);
+  const dead=await deadLetterCapturedItem(f,blockedItem,"crawler.robots_disallowed",prior);
   const health=await reserveDiscoveryCandidates(f.ingest,f.bucket,{sources:[SOURCE],now:observed,owner:"terminal-tick"});
   assert.equal(health.recovered,0);assert.equal(health.terminalLinked,1);assert.equal(health.reserved,1,"the normal candidate is still reserved in the same tick");
   assert.equal(health.pendingCount,0);assert.equal(f.ingest.rows("ingest_discovery_scans_v1")[0].status,"reserved");
@@ -255,4 +255,78 @@ test("M5 terminal source, duplicate and human-review dead letters are linked wit
   for(const code of ["crawler.source_unavailable_transport","crawler.source_unavailable_503","crawler.http_429","crawler.http_503","crawler.transient"])
     assert.equal(isTransientCrawlDeadLetter({status:"dead_letter",last_error_code:code}),true,code);
   assert.equal(isTransientCrawlDeadLetter({status:"pending",last_error_code:"crawler.source_unavailable_transport"}),false);
+});
+
+test("M5 a rate-limited automatic crawl recovery is deferred, never terminalized",async t=>{
+  const f=fixture(t),observed="2026-11-21T00:00:00.000Z",prior="2026-10-20T00:00:00.000Z",only={...candidate(1201),title:'Décision n° 2026-1201 QPC du 20 novembre 2026'};
+  const fetcher:typeof fetch=async input=>{const url=String(input);if(url.endsWith("robots.txt"))return new Response("User-agent: *\nAllow: /\nCrawl-delay: 0");
+    if(url.endsWith("les-decisions"))return new Response('<a href="'+only.url+'">'+only.title+'</a>');throw Error("unexpected fetch "+url);};
+  const handlers=createIngestStageHandlers({crawlerBindings:f.bindings,rawBucket:f.bucket,fetch:fetcher,now:()=>observed,
+    e2e:{sources:[SOURCE],search:f.search,verification:{apiBaseUrl:"https://fixture.example/api",deploymentRef:"fixture:discovery"}}});
+  const context=await f.context(observed);
+  assert.equal((await handlers.discovery!(context)).status,"succeeded");
+  const dead=await deadLetterCapturedItem(f,f.ingest.rows("ingest_discovery_items_v1")[0],"crawler.source_unavailable_transport",prior);
+  // The operator already spent the whole 10/hour automatic recovery budget.
+  for(let index=0;index<10;index+=1)f.ingest.db.prepare("INSERT INTO ingest_stage_redrive_records(id,job_id,stage,operator_id,reason,outcome,created_at) VALUES (?,?,?,?,?,?,?)")
+    .run(`prior-${index}`,`other-job-${index}`,"crawl","discovery-reservation:transient-crawl","budget", "redriven",observed);
+  const health=await reserveDiscoveryCandidates(f.ingest,f.bucket,{sources:[SOURCE],now:observed,owner:"rate-limited-tick"});
+  assert.equal(health.recovered,0,"a rate-limited recovery must not count as recovered");
+  assert.equal(health.deferredRateLimited,1);
+  assert.equal(health.terminalLinked,0,"a rate-limited recovery must never be terminalized");
+  assert.equal(health.pendingCount,1,"the discovery item stays durably pending for the next window");
+  assert.equal(f.ingest.rows("ingest_stage_jobs").find(x=>x.id===dead.jobId)?.status,"dead_letter");
+  assert.equal(f.ingest.rows("ingest_discovery_items_v1")[0].status,"pending");
+  assert.equal(f.ingest.rows("ingest_stage_redrive_records").filter(x=>x.outcome==="redriven").length,10);
+  assert.equal(f.ingest.rows("ingest_stage_redrive_records").filter(x=>x.outcome==="denied_rate_limited").length,1);
+});
+
+test("M5 a retryable downstream dead letter is resumed after a succeeded crawl",async t=>{
+  const f=fixture(t),observed="2026-11-21T00:00:00.000Z",only={...candidate(1201),title:'Décision n° 2026-1201 QPC du 20 novembre 2026'};
+  const fetcher:typeof fetch=async input=>{const url=String(input);if(url.endsWith("robots.txt"))return new Response("User-agent: *\nAllow: /\nCrawl-delay: 0");
+    if(url.endsWith("les-decisions"))return new Response('<a href="'+only.url+'">'+only.title+'</a>');throw Error("unexpected fetch "+url);};
+  const handlers=createIngestStageHandlers({crawlerBindings:f.bindings,rawBucket:f.bucket,fetch:fetcher,now:()=>observed,
+    e2e:{sources:[SOURCE],search:f.search,verification:{apiBaseUrl:"https://fixture.example/api",deploymentRef:"fixture:discovery"}}});
+  const context=await f.context(observed);
+  assert.equal((await handlers.discovery!(context)).status,"succeeded");
+  const item=f.ingest.rows("ingest_discovery_items_v1")[0];
+  const crawl=await registerIngestStageJob(f.ingest,{stage:"crawl",articleId:String(item.candidate_id),sourceKey:SOURCE,sourceVersion:String(item.source_version),contentHash:String(item.snapshot_hash),payloadRef:String(item.artifact_ref),now:observed});
+  const [crawlClaim]=await claimIngestStageJobs(f.ingest,{stage:"crawl",workerId:"downstream-fixture",limit:1,leaseSeconds:300,now:observed});
+  assert.ok(crawlClaim);
+  assert.equal(await completeIngestStageJob(f.ingest,{jobId:crawl.job.id,fencingToken:crawlClaim.claimed_fencing_token!,stage:"crawl",now:observed}),true);
+  const normalize=await registerIngestStageJob(f.ingest,{stage:"normalize",articleId:String(item.candidate_id),sourceKey:SOURCE,sourceVersion:"crawl-v1",contentHash:"crawl-hash",now:observed});
+  const [normalizeClaim]=await claimIngestStageJobs(f.ingest,{stage:"normalize",workerId:"downstream-fixture",limit:1,leaseSeconds:300,now:observed});
+  assert.ok(normalizeClaim);
+  await failIngestStageJob(f.ingest,{jobId:normalize.job.id,fencingToken:normalizeClaim.claimed_fencing_token!,stage:"normalize",errorCode:"ingest_stage.normalize_retry",retry:true,now:observed});
+  // Exhaust the normalize budget into a dead letter with a recorded retryable flag.
+  f.ingest.db.prepare("UPDATE ingest_stage_jobs SET status='dead_letter',attempt_count=max_attempts,last_error_code=?,last_failure_retryable=1,claimed_fencing_token=? WHERE id=?")
+    .run("ingest_stage.normalize_retry","final",normalize.job.id);
+  const health=await reserveDiscoveryCandidates(f.ingest,f.bucket,{sources:[SOURCE],now:observed,owner:"downstream-tick"});
+  assert.equal(health.recoveredDownstream,1,"the retryable downstream dead letter resumes");
+  assert.equal(health.terminalLinked,0);
+  assert.equal(f.ingest.rows("ingest_stage_jobs").find(x=>x.id===normalize.job.id)?.status,"pending");
+  assert.equal(f.ingest.rows("ingest_discovery_items_v1")[0].status,"reserved");
+  assert.equal(f.ingest.rows("ingest_stage_redrive_records")[0].operator_id,"discovery-reservation:downstream-resume");
+});
+
+test("M5 a final 404 is rechecked with a bounded new crawl revision after the cooldown",async t=>{
+  const f=fixture(t),observed="2026-11-21T00:00:00.000Z",prior="2026-10-20T00:00:00.000Z",only={...candidate(1201),title:'Décision n° 2026-1201 QPC du 20 novembre 2026'};
+  const fetcher:typeof fetch=async input=>{const url=String(input);if(url.endsWith("robots.txt"))return new Response("User-agent: *\nAllow: /\nCrawl-delay: 0");
+    if(url.endsWith("les-decisions"))return new Response('<a href="'+only.url+'">'+only.title+'</a>');throw Error("unexpected fetch "+url);};
+  const handlers=createIngestStageHandlers({crawlerBindings:f.bindings,rawBucket:f.bucket,fetch:fetcher,now:()=>observed,
+    e2e:{sources:[SOURCE],search:f.search,verification:{apiBaseUrl:"https://fixture.example/api",deploymentRef:"fixture:discovery"}}});
+  const context=await f.context(observed);
+  assert.equal((await handlers.discovery!(context)).status,"succeeded");
+  const item=f.ingest.rows("ingest_discovery_items_v1")[0];
+  const dead=await deadLetterCapturedItem(f,item,"crawler.official_404_unresolved",prior);
+  const health=await reserveDiscoveryCandidates(f.ingest,f.bucket,{sources:[SOURCE],now:observed,owner:"recheck-tick"});
+  assert.equal(health.recheckScheduled,1);
+  assert.equal(health.terminalLinked,0);
+  assert.equal(health.pendingCount,0);
+  const current=f.ingest.rows("ingest_discovery_items_v1")[0];
+  assert.equal(current.status,"reserved");
+  assert.notEqual(current.crawl_job_id,dead.jobId,"the terminal row stays immutable; a new revision is attempted");
+  const recheck=f.ingest.rows("ingest_stage_jobs").find(x=>x.id===current.crawl_job_id)!;
+  assert.equal(recheck.status,"pending");
+  assert.match(String(recheck.source_version),new RegExp(`:recheck:${observed.slice(0,10)}$`));
+  assert.equal(f.ingest.rows("ingest_stage_jobs").find(x=>x.id===dead.jobId)?.status,"dead_letter");
 });

@@ -5,6 +5,7 @@ import {e2eRows} from "../e2e/generation-state";
 import type {D1RuntimeDatabase,D1RuntimePreparedStatement} from "../d1/runtime-binding";
 import {registerIngestStageJob,type IngestStageJobRow} from "./repository";
 import {redriveIngestStageDeadLetter} from "./redrive";
+import {isRetryableStageDeadLetter} from "./retry-policy";
 import {INGEST_STAGE_MAX_ATTEMPTS} from "./contracts";
 import type {NativeStageCandidate} from "../../../workers/async-pipeline/src/native-crawler";
 
@@ -26,6 +27,48 @@ const TRANSIENT_CRAWL_ERROR_PATTERN = /^crawler\.(?:http_5\d\d|source_unavailabl
 /** One automated transient recovery per crawl job; later failures need an operator. */
 const MAX_AUTOMATED_CRAWL_RECOVERIES = 1;
 const AUTOMATED_RECOVERY_OPERATOR = "discovery-reservation:transient-crawl";
+/** One automated downstream resume per dead-letter job; later failures need an operator. */
+const MAX_AUTOMATED_DOWNSTREAM_RECOVERIES = 1;
+const AUTOMATED_DOWNSTREAM_OPERATOR = "discovery-reservation:downstream-resume";
+/**
+ * A final official 404/410 is not retried automatically, but the same candidate
+ * is rechecked at most once per cooldown window so a page that is published
+ * later can still be collected without an operator. The recheck budget is a
+ * finite year of weekly attempts; after that the item stays linked to its
+ * terminal job for explicit review.
+ */
+const TERMINAL_RECHECK_COOLDOWN_MS = 7 * 86_400_000;
+const MAX_TERMINAL_RECHECKS = 52;
+const TERMINAL_RECHECK_ERROR_CODE = "crawler.official_404_unresolved";
+
+type AutomatedRedriveOutcome = "recovered" | "deferred_rate_limited" | "deferred_ledger" | "deferred_racing" | "terminal";
+
+async function priorAutomatedRedrives(db:D1RuntimeDatabase,jobId:string,operator:string):Promise<number|null> {
+  try {
+    const rows=await e2eRows(db,"SELECT COUNT(*) AS count FROM ingest_stage_redrive_records WHERE job_id=? AND operator_id=? AND outcome='redriven'",jobId,operator);
+    return Number(rows[0]?.count??0);
+  } catch {
+    // The redrive ledger migration is mandatory, but a missing table must not
+    // livelock the minute tick. The caller defers the item and reports attention.
+    return null;
+  }
+}
+
+async function attemptAutomatedRedrive(
+  db:D1RuntimeDatabase,
+  input:{job:IngestStageJobRow;stage:IngestStageJobRow["stage"];operator:string;reason:string;now:string},
+):Promise<AutomatedRedriveOutcome> {
+  try {
+    const result=await redriveIngestStageDeadLetter(db,{stage:input.stage,jobId:input.job.id,operatorId:input.operator,reason:input.reason,
+      expectedFencingToken:input.job.claimed_fencing_token??null,now:input.now});
+    if(result.outcome==="redriven")return "recovered";
+    if(result.outcome==="denied_rate_limited")return "deferred_rate_limited";
+    if(result.outcome==="denied_nonterminal"||result.outcome==="denied_fencing_mismatch")return "deferred_racing";
+    return "terminal";
+  } catch {
+    return "deferred_ledger";
+  }
+}
 
 /** True only for a dead-letter crawl job whose recorded failure is provably transient. */
 export function isTransientCrawlDeadLetter(job: Pick<IngestStageJobRow,"status"|"last_error_code">): boolean {
@@ -77,7 +120,7 @@ export async function captureDiscoverySnapshot(db:D1RuntimeDatabase,core:D1Runti
   if(snapshot&&snapshot.sourceKey!==input.sourceKey)throw Error("discovery.parent_source_mismatch");
   if(!snapshot) {
     const candidates=[...new Map(input.candidates.map(c=>({...c,url:canonicalOfficialArticleUrl(c.sourceKey,c.url)})).map(c=>[c.url,c])).values()];
-    const known=new Map<string,Record<string,unknown>>(),latest=new Map<string,Record<string,unknown>>();
+    const known=new Map<string,Record<string,unknown>>(),latest=new Map<string,Record<string,unknown>>(),downstreamDead=new Map<string,IngestStageJobRow>();
     const identified=await Promise.all(candidates.map(async candidate=>({candidate,id:"native:"+(await sha256CanonicalUrl(candidate.sourceKey,candidate.url)).slice(0,32)})));
     for(let offset=0;offset<identified.length;offset+=40) {
       const chunk=identified.slice(offset,offset+40),marks=chunk.map(()=>"?").join(",");
@@ -89,25 +132,40 @@ export async function captureDiscoverySnapshot(db:D1RuntimeDatabase,core:D1Runti
         WHERE a.canonical_url IN (`+aliases.map(()=>"?").join(",")+`) ORDER BY a.created_at DESC,a.id DESC`,...aliases))known.set(canonicalOfficialArticleUrl(String(row.source_key),String(row.canonical_url)),row);
       const jobs=await e2eRows(db,"SELECT j.* FROM ingest_stage_jobs j WHERE j.stage='crawl' AND j.article_id IN ("+marks+") AND NOT EXISTS(SELECT 1 FROM ingest_stage_jobs newer WHERE newer.article_id=j.article_id AND newer.stage='crawl' AND (newer.created_at>j.created_at OR (newer.created_at=j.created_at AND newer.id>j.id)))",...chunk.map(x=>x.id));
       for(const row of jobs)latest.set(String(row.article_id),row);
+      const downstream=await e2eRows(db,"SELECT * FROM ingest_stage_jobs WHERE stage<>'crawl' AND status='dead_letter' AND article_id IN ("+marks+") ORDER BY created_at,id",...chunk.map(x=>x.id));
+      for(const row of downstream)if(!downstreamDead.has(String(row.article_id)))downstreamDead.set(String(row.article_id),row as unknown as IngestStageJobRow);
     }
     const needsSpainDateRecovery=(article:Record<string,unknown>|undefined)=>Boolean(article&&input.sourceKey==="es-tribunal-constitucional"
       &&(article.original_published_at==null||(article.published_version_id!=null&&article.published_version_date==null)));
+    // A crawl that succeeded but whose next stage dead-lettered on a transient
+    // error must be resumed on re-observation. Without this, the pinned crawl
+    // idempotency key reuses the already-succeeded crawl job and the downstream
+    // dead letter is never executed again.
+    const needsDownstreamResume=(id:string)=>isRetryableStageDeadLetter(downstreamDead.get(id)??{stage:"crawl",status:"dead_letter",last_error_code:null,last_failure_retryable:null});
     const due=identified.filter(x=>{
       const article=known.get(x.candidate.url),job=latest.get(x.id);
       return article?.source_key===input.sourceKey&&article.lifecycle_collection_state==="source_text_ready"
-        &&(!job||job.status==="succeeded")&&(needsSpainDateRecovery(article)
+        &&(!job||job.status==="succeeded")&&(needsSpainDateRecovery(article)||needsDownstreamResume(x.id)
           ||Date.parse(String(job?.completed_at??article.fetched_at??"1970-01-01"))<Date.parse(owner.now)-7*86400000);
     }).sort((a,b)=>Number(needsSpainDateRecovery(known.get(b.candidate.url)))-Number(needsSpainDateRecovery(known.get(a.candidate.url)))
+      ||Number(needsDownstreamResume(b.id))-Number(needsDownstreamResume(a.id))
       ||String(latest.get(a.id)?.completed_at??known.get(a.candidate.url)?.fetched_at??"").localeCompare(String(latest.get(b.id)?.completed_at??known.get(b.candidate.url)?.fetched_at??""))
       ||a.id.localeCompare(b.id));
     const rechecks=new Set(due.slice(0,Math.max(0,Math.min(input.recheckLimit,20))).map(x=>x.id));
+    const downstreamResume=new Set(due.filter(x=>needsDownstreamResume(x.id)&&!needsSpainDateRecovery(known.get(x.candidate.url))).slice(0,Math.max(0,Math.min(input.recheckLimit,20))).map(x=>x.id));
     const items:Item[]=[];
     for(const {candidate,id} of identified) {
       const snapshotHash=await sha256Canonical(candidate),artifactRef="stages/ingest-discovery/"+input.sourceKey+"/"+snapshotHash+".json";
       const article=known.get(candidate.url),knownReady=article?.source_key===input.sourceKey&&article.lifecycle_collection_state==="source_text_ready";
+      // A downstream resume reuses the already-succeeded crawl job (base
+      // sourceVersion, no suffix) and redrives the dead downstream stage. Date
+      // repair and the ordinary 7-day recheck deliberately create a fresh crawl
+      // revision so source text is re-observed.
+      const resume=downstreamResume.has(id);
+      const marker=resume?"":needsSpainDateRecovery(article)?":repair-date:":":recheck:";
       items.push({candidateId:id,candidate,url:candidate.url,snapshotHash,artifactRef,existingArticleId:article?.source_key===input.sourceKey?String(article.id):null,
-        coveredExisting:Boolean(knownReady)&&!rechecks.has(id),priority:article?(rechecks.has(id)&&needsSpainDateRecovery(article)?30:0):50,
-        sourceVersion:"discovery-snapshot-v1:"+snapshotHash+(rechecks.has(id)?(needsSpainDateRecovery(article)?":repair-date:":":recheck:")+owner.now.slice(0,10):"")});
+        coveredExisting:Boolean(knownReady)&&!rechecks.has(id),priority:article?(needsSpainDateRecovery(article)?30:resume?20:0):50,
+        sourceVersion:"discovery-snapshot-v1:"+snapshotHash+(rechecks.has(id)&&marker?marker+owner.now.slice(0,10):"")});
     }
     const proposed:DiscoverySnapshot={schema:"worldcons.discovery-snapshot.v1",jobId:owner.jobId,sourceKey:input.sourceKey,observedAt:owner.now,
       scope:{rangeDays:input.rangeDays,countryCorpusComplete:false,window:"official listing; ES search at most four pages per type/year or bounded HJ tail; observed window only"},items};
@@ -139,7 +197,8 @@ export async function reserveDiscoveryCandidates(db:D1RuntimeDatabase,bucket:Dis
   const limit=Math.max(1,Math.min(input.limit??20,40));
   if(!input.sources.length)throw Error("discovery.sources_empty");
   const scans=await e2eRows(db,"SELECT * FROM ingest_discovery_scans_v1 WHERE source_key IN ("+input.sources.map(()=>"?").join(",")+") AND (status='pending' OR (status='leased' AND lease_expires_at<=?)) ORDER BY captured_at,job_id LIMIT 10",...input.sources,input.now);
-  let reserved=0,claimed=0,recovered=0,terminalLinked=0,handled=0;
+  let reserved=0,claimed=0,recovered=0,recoveredDownstream=0,terminalLinked=0,handled=0;
+  let deferredRateLimited=0,deferredLedgerUnavailable=0,recheckScheduled=0,recheckExhausted=0,deferred=false;
   for(const scan of scans.filter(x=>input.sources.includes(String(x.source_key)))) {
     const leaseUntil=new Date(Date.parse(input.now)+300000).toISOString(),owner=input.owner+":"+crypto.randomUUID();
     const result=await db.prepare("UPDATE ingest_discovery_scans_v1 SET status='leased',reservation_fence=reservation_fence+1,reservation_owner=?,lease_expires_at=?,updated_at=? WHERE job_id=? AND (status='pending' OR (status='leased' AND lease_expires_at<=?))")
@@ -156,13 +215,11 @@ export async function reserveDiscoveryCandidates(db:D1RuntimeDatabase,bucket:Dis
       if(!pinned||await sha256Canonical(candidate)!==item.snapshot_hash||pinned.snapshotHash!==item.snapshot_hash||pinned.sourceVersion!==item.source_version||pinned.artifactRef!==item.artifact_ref)throw Error("discovery.candidate_mismatch");
       await bucket.put(String(item.artifact_ref),new TextEncoder().encode(canonicalJson(candidate)),{httpMetadata:{contentType:"application/json"}});
       const registration=await registerIngestStageJob(db,{stage:"crawl",articleId:String(item.candidate_id),sourceKey:String(scan.source_key),sourceVersion:String(item.source_version),contentHash:String(item.snapshot_hash),payloadRef:String(item.artifact_ref),priority:Number(item.priority),now:input.now});
-      // The crawl idempotency key is pinned to the candidate snapshot, so a new
-      // discovery day re-uses a *previous* dead-letter job for the same candidate
-      // instead of doing any crawl work. Only a transiently failed job may be
-      // recovered once, in place, on this ordinary path. Terminal source/policy,
-      // duplicate and human-review outcomes are linked to their existing job and
-      // counted separately, so they neither block nor masquerade as new work.
-      let crawlJob=registration.job,live=true;
+      // The base crawl idempotency key is pinned to the candidate snapshot. A
+      // newer recheck revision may already exist, so all decisions use the
+      // newest row for the article, never merely the pinned registration.
+      const newest=await e2eRows(db,"SELECT * FROM ingest_stage_jobs WHERE stage='crawl' AND article_id=? ORDER BY created_at DESC,id DESC LIMIT 1",String(item.candidate_id));
+      let crawlJob=(newest[0] as unknown as IngestStageJobRow|undefined)??registration.job,live=true,defer=false;
       if(crawlJob.status==="dead_letter") {
         live=false;
         // `max_attempts > INGEST_STAGE_MAX_ATTEMPTS` proves the row was already
@@ -170,14 +227,53 @@ export async function reserveDiscoveryCandidates(db:D1RuntimeDatabase,bucket:Dis
         // ledger write failed, so an audit failure or a racing tick can never
         // reset the single automated-recovery budget.
         if(isTransientCrawlDeadLetter(crawlJob)&&crawlJob.max_attempts<=INGEST_STAGE_MAX_ATTEMPTS) {
-          const prior=await e2eRows(db,"SELECT COUNT(*) AS count FROM ingest_stage_redrive_records WHERE job_id=? AND operator_id=? AND outcome='redriven'",crawlJob.id,AUTOMATED_RECOVERY_OPERATOR);
-          if(Number(prior[0]?.count??0)<MAX_AUTOMATED_CRAWL_RECOVERIES) {
-            const recovery=await redriveIngestStageDeadLetter(db,{stage:"crawl",jobId:crawlJob.id,operatorId:AUTOMATED_RECOVERY_OPERATOR,reason:"transient-crawl-recovery:"+(crawlJob.last_error_code??"unknown"),expectedFencingToken:crawlJob.claimed_fencing_token??null,now:input.now});
-            if(recovery.outcome==="redriven") {crawlJob={...crawlJob,status:"pending",last_error_code:null,last_error_summary:null};live=true;recovered++;}
+          const prior=await priorAutomatedRedrives(db,crawlJob.id,AUTOMATED_RECOVERY_OPERATOR);
+          if(prior===null) {deferred=true;deferredLedgerUnavailable++;}
+          else if(prior<MAX_AUTOMATED_CRAWL_RECOVERIES) {
+            const outcome=await attemptAutomatedRedrive(db,{job:crawlJob,stage:"crawl",operator:AUTOMATED_RECOVERY_OPERATOR,
+              reason:"transient-crawl-recovery:"+(crawlJob.last_error_code??"unknown"),now:input.now});
+            if(outcome==="recovered") {crawlJob={...crawlJob,status:"pending",last_error_code:null,last_error_summary:null};live=true;recovered++;}
+            else if(outcome==="deferred_rate_limited") {deferred=true;deferredRateLimited++;}
+            else if(outcome==="deferred_ledger") {deferred=true;deferredLedgerUnavailable++;}
+            else if(outcome==="deferred_racing") defer=true;
+          }
+        } else if(crawlJob.last_error_code===TERMINAL_RECHECK_ERROR_CODE) {
+          // A final official 404/410 can become collectable later. Recheck it at
+          // most once per cooldown with a distinct crawl revision so the terminal
+          // row stays immutable and auditable.
+          const anchor=Date.parse(String(crawlJob.updated_at??crawlJob.completed_at??""));
+          if(Number.isFinite(anchor)&&Date.parse(input.now)-anchor>=TERMINAL_RECHECK_COOLDOWN_MS) {
+            const rechecks=await e2eRows(db,"SELECT COUNT(*) AS count FROM ingest_stage_jobs WHERE stage='crawl' AND article_id=? AND instr(source_version,':recheck:')>0",crawlJob.article_id);
+            if(Number(rechecks[0]?.count??0)<MAX_TERMINAL_RECHECKS) {
+              const recheck=await registerIngestStageJob(db,{stage:"crawl",articleId:crawlJob.article_id,sourceKey:String(scan.source_key),
+                sourceVersion:String(item.source_version)+":recheck:"+input.now.slice(0,10),contentHash:String(item.snapshot_hash),
+                payloadRef:String(item.artifact_ref),priority:Number(item.priority),now:input.now});
+              crawlJob=recheck.job;live=true;recheckScheduled++;
+            } else {recheckExhausted++;live=false;}
           }
         }
-        if(!live)terminalLinked++;
+        if(!live&&!deferred)terminalLinked++;
+      } else if(crawlJob.status==="succeeded") {
+        // The crawl succeeded but a *later* stage dead-lettered. Resume only a
+        // failure that was provably retryable, once per job, under the same
+        // operator rate limit. A terminal downstream block stays linked.
+        const downstream=await e2eRows(db,"SELECT * FROM ingest_stage_jobs WHERE article_id=? AND stage<>'crawl' AND status='dead_letter' ORDER BY created_at,id LIMIT 1",crawlJob.article_id);
+        const dead=downstream[0] as unknown as IngestStageJobRow|undefined;
+        if(dead&&isRetryableStageDeadLetter(dead)) {
+          const prior=await priorAutomatedRedrives(db,dead.id,AUTOMATED_DOWNSTREAM_OPERATOR);
+          if(prior===null) {deferred=true;deferredLedgerUnavailable++;}
+          else if(prior<MAX_AUTOMATED_DOWNSTREAM_RECOVERIES) {
+            const outcome=await attemptAutomatedRedrive(db,{job:dead,stage:dead.stage,operator:AUTOMATED_DOWNSTREAM_OPERATOR,
+              reason:"downstream-resume:"+dead.stage+":"+(dead.last_error_code??"unknown"),now:input.now});
+            if(outcome==="recovered") {recoveredDownstream++;live=true;}
+            else if(outcome==="deferred_rate_limited") {deferred=true;deferredRateLimited++;}
+            else if(outcome==="deferred_ledger") {deferred=true;deferredLedgerUnavailable++;}
+            else if(outcome==="deferred_racing") {deferred=true;}
+            else {live=false;terminalLinked++;}
+          } else {live=false;terminalLinked++;}
+        } else if(dead) {live=false;terminalLinked++;}
       }
+      if(deferred)break;
       const token=crypto.randomUUID();
       await batch(db,[guard(token),db.prepare("UPDATE ingest_discovery_items_v1 SET status='reserved',crawl_job_id=?,updated_at=? WHERE job_id=? AND candidate_id=? AND status='pending'").bind(crawlJob.id,input.now,scan.job_id,item.candidate_id),cleanup(db,token)]);
       if(live)reserved++;
@@ -186,11 +282,14 @@ export async function reserveDiscoveryCandidates(db:D1RuntimeDatabase,bucket:Dis
     const token=crypto.randomUUID();
     await batch(db,[guard(token),db.prepare("UPDATE ingest_discovery_scans_v1 SET status=CASE WHEN EXISTS(SELECT 1 FROM ingest_discovery_items_v1 WHERE job_id=? AND status='pending') THEN 'pending' ELSE 'reserved' END,reservation_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE job_id=?")
       .bind(scan.job_id,input.now,scan.job_id),cleanup(db,token)]);
+    if(deferred)break;
     if(handled>=limit)break;
   }
   const pending=(await e2eRows(db,"SELECT COUNT(*) AS count,MIN(s.captured_at) AS oldest FROM ingest_discovery_items_v1 i JOIN ingest_discovery_scans_v1 s ON s.job_id=i.job_id WHERE i.status='pending'"))[0];
   const pendingCount=Number(pending.count),oldestPendingAgeSeconds=pending.oldest?Math.max(0,(Date.parse(input.now)-Date.parse(String(pending.oldest)))/1000):0;
   const stalled=(await e2eRows(db,"SELECT COUNT(*) AS count FROM ingest_discovery_scans_v1 WHERE status='capturing' AND captured_at<=?",new Date(Date.parse(input.now)-1800000).toISOString()))[0];
   const stalledCaptureCount=Number(stalled.count);
-  return {claimed,reserved,recovered,terminalLinked,pendingCount,oldestPendingAgeSeconds,stalledCaptureCount,requiresAttention:stalledCaptureCount>0||(pendingCount>0&&oldestPendingAgeSeconds>1800)};
+  return {claimed,reserved,recovered,recoveredDownstream,terminalLinked,recheckScheduled,recheckExhausted,
+    deferredRateLimited,deferredLedgerUnavailable,pendingCount,oldestPendingAgeSeconds,stalledCaptureCount,
+    requiresAttention:stalledCaptureCount>0||deferredLedgerUnavailable>0||recheckExhausted>0||(pendingCount>0&&oldestPendingAgeSeconds>1800)};
 }

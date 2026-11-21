@@ -76,6 +76,15 @@ function SourceOverview({
       </p>
       {!staged.available ? <div className="mb-4"><Unavailable title="단계별 수집" /></div> : null}
       {!runs.available ? <div className="mb-4"><Unavailable title="기존 수집 실행" /></div> : null}
+      {staged.available ? (
+        <div className="mb-4 grid gap-2 rounded-lg border border-rule bg-white p-4 text-xs text-ink/65 sm:grid-cols-2 lg:grid-cols-5">
+          <span>미예약 발견 항목 <strong className="text-ink">{staged.observability.discoveryPendingCount ?? "-"}</strong></span>
+          <span>가장 오래된 대기 <strong className="text-ink">{staged.observability.oldestDiscoveryPendingAgeSeconds === null ? "-" : `${count(Math.floor(staged.observability.oldestDiscoveryPendingAgeSeconds / 60))}분`}</strong></span>
+          <span>rate-limit 종결 <strong className="text-ink">{staged.observability.redriveRateLimitedLastHour ?? "-"}</strong></span>
+          <span>dispatch DLQ <strong className="text-ink">{staged.observability.dispatchOutboxDeadLetters ?? "-"}</strong></span>
+          <span>bridge DLQ <strong className="text-ink">{staged.observability.bridgeOutboxDeadLetters ?? "-"}</strong></span>
+        </div>
+      ) : null}
       <div className="overflow-x-auto rounded-lg border border-rule bg-white">
         <table className="w-full min-w-[780px] text-left text-sm">
           <thead className="border-b border-rule bg-parchment/60 text-xs font-semibold text-ink/65">
@@ -101,7 +110,8 @@ function SourceOverview({
                     {followup ? (
                       <><span className="font-semibold">{stageNames[followup.stage] ?? followup.stage}</span>
                         {" · "}<State status={followup.status} />
-                        <p className="mt-1 text-xs">{formatTime(followup.updatedAt)}</p></>
+                        <p className="mt-1 text-xs">{formatTime(followup.updatedAt)}</p>
+                        {source.downstreamDeadLetterCount > 0 ? <p className="mt-1 text-xs font-semibold text-court">미복구 DLQ {count(source.downstreamDeadLetterCount)}건</p> : null}</>
                     ) : "후속 처리 이력 없음"}
                   </td>
                 </tr>
