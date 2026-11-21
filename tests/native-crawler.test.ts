@@ -564,6 +564,16 @@ test("native source parser discovers only official records for all four sources"
   assert.equal(spainWithPlaceholder[0].metadata.hjId, "32117");
 });
 
+test("Spanish discovery rejects Show/0 and canonicalizes ACTION sidebar links to one HJ identity", () => {
+  const base="https://hj.tribunalconstitucional.es/HJ/es/Busqueda/Index";
+  const listing=`<a href="/HJ/es/Resolucion/Show/0">Resolución</a>
+    <a href="/HJ/es/Resolucion/Show/32151?ACTION=disposiciones-citadas">SENTENCIA 67/2026</a>`;
+  const matches=parseNativeSourceListing("es-tribunal-constitucional",listing,base);
+  assert.equal(matches.length,1);
+  assert.equal(matches[0].url,"https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32151");
+  assert.equal(matches[0].metadata.hjId,"32151");
+});
+
 test("targeted staged crawl preserves the actually fetched BVerfG official URL variant", async () => {
   const store = memoryBindings();
   const firstUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html";
@@ -1003,7 +1013,7 @@ test("Spain native discovery probes official JSON ids after the D1 HJ tail and s
   }
 });
 
-test("Spain native discovery uses the authenticated official search session before tail probing", async () => {
+test("Spain combines the authenticated official search with a newer HJ tail even when search is non-empty", async () => {
   const store = memoryBindings();
   const originalNow = Date.now;
   let tick = 0;
@@ -1024,20 +1034,19 @@ test("Spain native discovery uses the authenticated official search session befo
       if (url.endsWith("/HJ/es/Resolucion/List?page=1")) return response('<a href="/HJ/es/Resolucion/Show/32141">SENTENCIA 62/2026</a>');
       if (url.endsWith("/HJ/es/Resolucion/List?page=2")) return response("<html></html>");
       if (/\/(?:HJ\/)?Resolucion\/Api\/json\/32141$/.test(url)) return response(JSON.stringify({ TIPO_RESOLUCION: "SENTENCIA", NUMERO_RESOLUCION: 62, ANNO_RESOLUCION: 2026, FECHA_REGISTRO: "22/09/2026 0:00:00", CONTENIDO_IRRELEVANTE_PARA_INTERNET: false, AVISO: "Este auto no incorpora doctrina constitucional." }), 200, "application/json");
+      if (/\/(?:HJ\/)?Resolucion\/Api\/json\/32142$/.test(url)) return response(JSON.stringify({ TIPO_RESOLUCION: "SENTENCIA", NUMERO_RESOLUCION: 64, ANNO_RESOLUCION: 2026, FECHA_REGISTRO: "23/09/2026 0:00:00", RESOLUCIONES_FUNDAMENTOS: [{ TEXTO: "Official Spanish decision with verified rights analysis. ".repeat(65) }] }), 200, "application/json");
       if (url.includes("/Busqueda/BuscarAjax")) return response('{"success":"0","message":"No se han encontrado resultados"}', 200, "application/json");
       throw new Error(`unexpected fetch ${url}`);
     };
     const result = await runNativeSourceCollection("es-tribunal-constitucional", store.bindings, { now, limit: 20, fetch: fetcher, idempotencyKey: "m8:crawler-daily:spain-search-session" });
     assert.equal(result.status, "completed");
-    assert.equal(result.discoveredCount, 1);
+    assert.equal(result.discoveredCount, 2, "newer HJ API ids must not be starved by nonempty older search results");
     assert.equal(result.failedCount, 0);
-    assert.equal(store.articles.size, 1);
-    const article = [...store.articles.values()][0];
-    assert.equal(article.status, "metadata_only");
-    assert.equal(article.review_state, "needs_triage");
-    const metadata = JSON.parse(String(article.source_metadata)) as { discoveryIndex?: string; hjId?: string };
-    assert.equal(metadata.discoveryIndex, "official-search");
-    assert.equal(metadata.hjId, "32141");
+    assert.equal(store.articles.size, 2);
+    const captured = [...store.articles.values()].map((article) => JSON.parse(String(article.source_metadata)) as { discoveryIndex?: string; hjId?: string });
+    assert.deepEqual(captured.map((item) => item.hjId).sort(), ["32141", "32142"]);
+    assert.ok(store.articles.has("https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32142"));
+    assert.ok(store.statements.some((statement) => statement.sql.includes("INSERT INTO articles") && statement.values.some((value) => value === "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32142")));
   } finally {
     Date.now = originalNow;
   }

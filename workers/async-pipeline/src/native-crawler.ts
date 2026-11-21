@@ -609,6 +609,8 @@ function spainPayloadCandidate(
   hjId: number,
   evidence?: SpainOfficialDateValidation,
 ): NativeArticleCandidate | null {
+  // HJ id=0 is an unresolvable search placeholder, not a court decision.
+  if (!Number.isSafeInteger(hjId) || hjId <= 0) return null;
   const dateValidation: SpainOfficialDateValidation = evidence
     ?? { ...validateSpainDecisionDate(payload), dateBasis: "json_fecha_registro" };
   const heading = dateValidation.heading;
@@ -1024,10 +1026,20 @@ export function attachScotusOfficialPdfProvenance(
 async function persistArticle(bindings: NativeCrawlerBindings, candidate: NativeArticleCandidate, text: string, runId: string, fetchedAt: string): Promise<NativePersistResult> {
   const core = bindings.WORLDCONS_CORE;
   const canonical = canonicalNativeArticleUrl(candidate.sourceKey,canonicalUrl(candidate.url, candidate.url));
+  if (candidate.sourceKey === "es-tribunal-constitucional") {
+    const parsedId = new URL(canonical).pathname.match(/^\/HJ\/es\/Resolucion\/Show\/(\d+)$/i)?.[1];
+    if (!parsedId || !Number.isSafeInteger(Number(parsedId)) || Number(parsedId) <= 0) {
+      throw new Error("crawler.invalid_spain_hj_identity");
+    }
+  }
   const clean = normalizeNativeSourceText(text);
   const status = articleStatus(candidate, clean);
   const contentHash = await sha256(clean.replace(/\s+/g, " ").trim() || `${candidate.sourceKey}:${canonical}`);
-  const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state, summary_json, canonical_url, original_published_at, fetched_at, updated_at FROM articles WHERE (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) AND source_key=? ORDER BY created_at,id LIMIT 1").bind(canonical,candidate.sourceKey==="es-tribunal-constitucional"?canonical.replace("/HJ/es/","/es/"):canonical,canonical+"?",canonical.replace("/HJ/es/","/es/")+"?",candidate.sourceKey).first<Record<string, unknown>>();
+  const alternate = candidate.sourceKey==="es-tribunal-constitucional"?canonical.replace("/HJ/es/","/es/"):canonical;
+  // Legacy ?ACTION= auxiliary pages are *withdrawn duplicates*, not the
+  // canonical decision. Prioritizing created_at could select an old withdrawn
+  // duplicate and refresh its metadata instead of the published HJ article.
+  const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state, summary_json, canonical_url, original_published_at, fetched_at, updated_at FROM articles WHERE (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) AND source_key=? ORDER BY CASE WHEN canonical_url=? THEN 0 WHEN canonical_url=? THEN 1 ELSE 2 END, created_at,id LIMIT 1").bind(canonical,alternate,canonical+"?",alternate+"?",candidate.sourceKey,canonical,alternate).first<Record<string, unknown>>();
   if(existing&&Date.parse(fetchedAt)<Date.parse(String(existing.fetched_at??"")))return {outcome:"preserved",articleId:String(existing.id),canonicalUrl:String(existing.canonical_url),contentHash:String(existing.content_hash),status:String(existing.status)};
   const preserved = async (): Promise<NativePersistResult> => {
     const row = await core.prepare("SELECT id,canonical_url,content_hash,status FROM articles WHERE id=?").bind(existing!.id).first<Record<string, unknown>>();
@@ -1247,13 +1259,37 @@ async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeC
     const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
     return discoverFrance(result.html, url).filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
   }
-  const indexUrl = `${base}/HJ/es/Busqueda/Index`;
-  const indexResult = await fetchHtml(source, indexUrl, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
-  const direct = discoverSpain(indexResult.html, indexUrl).filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
-  if (direct.length > 0) return direct;
-  const searched = await discoverSpainSearch(fetcher, robotsCache, lastRequest, rangeStart, limit);
-  if (searched.length > 0) return searched;
-  return discoverSpainTail(bindings, fetcher, robotsCache, lastRequest, rangeStart, limit, browserNavigate);
+  // The HJ search session can return a large, stale window of already-known
+  // decisions while the official JSON API exposes newly issued HJ ids. The
+  // previous early return on a non-empty search silently starved every new
+  // tail record. Always inspect the bounded official HJ tail FIRST, then
+  // complement it with historical search candidates. Both daily and staged
+  // discovery use this same path; no parallel / alternative publication path.
+  let tail: NativeArticleCandidate[] = [];
+  let tailFailure: unknown;
+  try {
+    tail = await discoverSpainTail(bindings, fetcher, robotsCache, lastRequest, rangeStart, limit);
+  } catch (error) {
+    tailFailure = error;
+  }
+  if (tail.length >= limit) return tail.slice(0, limit);
+  let listed: NativeArticleCandidate[] = [];
+  try {
+    const indexUrl = `${base}/HJ/es/Busqueda/Index`;
+    const indexResult = await fetchHtml(source, indexUrl, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
+    const direct = discoverSpain(indexResult.html, indexUrl).filter((item) => withinRange(item.publishedAt, rangeStart));
+    listed = direct.length > 0 ? direct : await discoverSpainSearch(fetcher, robotsCache, lastRequest, rangeStart, limit);
+  } catch (error) {
+    if (tail.length === 0) throw error;
+  }
+  if (tailFailure && listed.length === 0 && tail.length === 0) throw tailFailure;
+  const merged = new Map<string, NativeArticleCandidate>();
+  for (const item of [...tail, ...listed]) {
+    const key = canonicalNativeArticleUrl(source, item.url);
+    if (!merged.has(key)) merged.set(key, item);
+    if (merged.size >= limit) break;
+  }
+  return [...merged.values()];
 }
 
 async function fetchCandidate(candidate: NativeArticleCandidate, bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, allowBrowser: boolean, browserNavigate?: CrawlerOptions["browserNavigate"]) {
