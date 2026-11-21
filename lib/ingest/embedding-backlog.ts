@@ -3,7 +3,7 @@ import {
   DEFAULT_GEMINI_EMBEDDING_MODEL,
   EMBEDDING_DIMENSIONS,
 } from "@/lib/ai/embeddings";
-import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { getRuntimeD1Binding, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import type { SummaryJson } from "@/lib/db/types";
 import { persistArticleEmbedding } from "@/lib/ingest/embedding-store";
 import { isGlobalSummaryBackoff, summaryRetryDelayMs } from "@/lib/ingest/summary-batch";
@@ -24,7 +24,91 @@ export interface EmbeddingBacklogResult {
   embedded: number;
   skipped: number;
   failed: number;
+  /** Rows that hit their persisted retry/backoff ledger during this run. */
+  deferred?: number;
   stoppedReason?: string;
+}
+
+/** Bounded persistent retry budget for one embedding backlog article. */
+export const EMBEDDING_BACKLOG_MAX_ATTEMPTS = 5;
+const EMBEDDING_BACKLOG_BASE_DELAY_MS = 15 * 60_000;
+const EMBEDDING_BACKLOG_MAX_DELAY_MS = 6 * 60 * 60_000;
+
+function embeddingBackoffMs(attempt: number) {
+  return Math.min(EMBEDDING_BACKLOG_MAX_DELAY_MS, EMBEDDING_BACKLOG_BASE_DELAY_MS * Math.max(0, attempt - 1));
+}
+
+function failureLedgerAvailable() {
+  return `
+    NOT EXISTS (
+      SELECT 1 FROM embedding_backlog_failures_v1 f
+       WHERE f.article_id = articles.id
+         AND (f.exhausted_at IS NOT NULL OR (f.next_attempt_at IS NOT NULL AND f.next_attempt_at > ?))
+    )`;
+}
+
+async function clearEmbeddingFailure(core: D1RuntimeDatabase, articleId: string) {
+  try {
+    await core.prepare("DELETE FROM embedding_backlog_failures_v1 WHERE article_id = ?").bind(articleId).run?.();
+  } catch {
+    // The ledger is an anti-starvation optimisation; a failed cleanup must not
+    // hide a successful, already-durable embedding write.
+  }
+}
+
+async function recordEmbeddingFailure(
+  core: D1RuntimeDatabase,
+  articleId: string,
+  message: string,
+  now: number,
+): Promise<{ attempt: number; exhausted: boolean }> {
+  let previousCount = 0;
+  try {
+    const previous = await core
+      .prepare("SELECT attempt_count FROM embedding_backlog_failures_v1 WHERE article_id = ? LIMIT 1")
+      .bind(articleId)
+      .all<{ attempt_count: number | string }>();
+    previousCount = Number(previous.results?.[0]?.attempt_count ?? 0);
+  } catch {
+    previousCount = 0;
+  }
+  const attempt = previousCount + 1;
+  const exhausted = attempt >= EMBEDDING_BACKLOG_MAX_ATTEMPTS;
+  const nextAttemptAt = exhausted ? null : new Date(now + embeddingBackoffMs(attempt)).toISOString();
+  const updatedAt = new Date(now).toISOString();
+  try {
+    await core.prepare(
+      `INSERT INTO embedding_backlog_failures_v1
+         (article_id, attempt_count, next_attempt_at, last_error_code, last_error_summary, exhausted_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(article_id) DO UPDATE SET
+         attempt_count = excluded.attempt_count,
+         next_attempt_at = excluded.next_attempt_at,
+         last_error_code = excluded.last_error_code,
+         last_error_summary = excluded.last_error_summary,
+         exhausted_at = excluded.exhausted_at,
+         updated_at = excluded.updated_at`,
+    ).bind(articleId, attempt, nextAttemptAt, "embedding.backlog_failed", message.slice(0, 300), exhausted ? updatedAt : null, updatedAt).run?.();
+  } catch {
+    // Without a durable ledger the run still reports the failure honestly; the
+    // migration/health check is the operator signal that persistence is missing.
+  }
+  return { attempt, exhausted };
+}
+
+/**
+ * Operator recovery for rows whose automatic embedding retry budget is
+ * exhausted. Passing no id clears every exhausted row.
+ */
+export async function resetEmbeddingBacklogFailures(articleId?: string): Promise<number> {
+  const core = getRuntimeD1Binding("worldcons_core");
+  if (!core) throw new Error("embedding_backlog.core_binding_missing");
+  const statement = articleId
+    ? core.prepare("DELETE FROM embedding_backlog_failures_v1 WHERE article_id = ?")
+    : core.prepare("DELETE FROM embedding_backlog_failures_v1 WHERE exhausted_at IS NOT NULL");
+  const result = await statement.bind(...(articleId ? [articleId] : [])).run?.();
+  if (!result || result.success === false || result.error) throw new Error("embedding_backlog.reset_failed");
+  return Number(result.meta?.changes ?? 0);
 }
 
 interface BacklogRow {
@@ -102,8 +186,9 @@ export async function runEmbeddingBacklog(options: EmbeddingBacklogOptions = {})
 
   const limit = Math.max(1, Math.min(options.limit ?? 50, 500));
   const delayMs = Math.max(0, options.delayMs ?? 0);
-  const values: unknown[] = [];
-  let query = `SELECT id, source_key, summary_json FROM articles WHERE status = 'summarized' AND (${candidatePredicate()})`;
+  const now = Date.now();
+  const values: unknown[] = [new Date(now).toISOString()];
+  let query = `SELECT id, source_key, summary_json FROM articles WHERE status = 'summarized' AND (${candidatePredicate()}) AND ${failureLedgerAvailable()}`;
   if (options.sourceKey) {
     query += " AND source_key = ?";
     values.push(options.sourceKey);
@@ -126,6 +211,7 @@ export async function runEmbeddingBacklog(options: EmbeddingBacklogOptions = {})
   let embedded = 0;
   let skipped = 0;
   let failed = 0;
+  let deferred = 0;
 
   for (const [index, row] of rows.entries()) {
     if (options.signal?.aborted) throw options.signal.reason;
@@ -149,17 +235,21 @@ export async function runEmbeddingBacklog(options: EmbeddingBacklogOptions = {})
       }
 
       if (artifact.vector.length !== EMBEDDING_DIMENSIONS) {
+        const outcome = await recordEmbeddingFailure(core, row.id, `dimension_mismatch:${artifact.vector.length}`, now);
+        if (outcome.exhausted) deferred += 1;
         return {
           status: "deferred",
           scanned: index + 1,
           embedded,
           skipped,
           failed: failed + 1,
+          deferred,
           stoppedReason: `Embedding provider returned ${artifact.vector.length} dimensions, expected ${EMBEDDING_DIMENSIONS}.`,
         };
       }
 
       await persistArticleEmbedding(row.id, artifact);
+      await clearEmbeddingFailure(core, row.id);
       embedded += 1;
     } catch (caught) {
       if (options.signal?.aborted) throw options.signal.reason;
@@ -177,6 +267,8 @@ export async function runEmbeddingBacklog(options: EmbeddingBacklogOptions = {})
       }
 
       failed += 1;
+      const failure = await recordEmbeddingFailure(core, row.id, message, now);
+      if (failure.exhausted) deferred += 1;
       if (failed >= 5) {
         return {
           status: "deferred",
@@ -184,6 +276,7 @@ export async function runEmbeddingBacklog(options: EmbeddingBacklogOptions = {})
           embedded,
           skipped,
           failed,
+          deferred,
           stoppedReason: `Stopped after ${failed} consecutive embedding failures: ${message.slice(0, 300)}`,
         };
       }
@@ -196,7 +289,7 @@ export async function runEmbeddingBacklog(options: EmbeddingBacklogOptions = {})
     }
   }
 
-  return { status: "completed", scanned: rows.length, embedded, skipped, failed };
+  return { status: "completed", scanned: rows.length, embedded, skipped, failed, deferred };
 }
 
 export async function countMissingEmbeddings(sourceKey?: string) {

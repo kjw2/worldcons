@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
+import { countMissingEmbeddings, getEmbeddingReadiness, resetEmbeddingBacklogFailures, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
 import { boundedInteger } from "@/lib/utils/numbers";
 import { runWithWorkflowHeartbeats } from "@/lib/ops/workflow-heartbeat";
 
@@ -20,6 +20,10 @@ async function main() {
   // The router enforces a per-minute window, so a deferral usually just needs to wait
   // for that window to roll over rather than abandoning the run.
   const passDelayMs = boundedInteger(argumentValue("pass-delay-ms"), 65_000, { min: 1_000, max: 10 * 60_000 });
+  if (hasFlag("retry-exhausted")) {
+    const reset = await resetEmbeddingBacklogFailures(argumentValue("article"));
+    console.log(JSON.stringify({ event: "embedding_backlog_retry_reset", reset }));
+  }
 
   const before = await countMissingEmbeddings(sourceKey);
   const readinessBefore = sourceKey ? null : await getEmbeddingReadiness();

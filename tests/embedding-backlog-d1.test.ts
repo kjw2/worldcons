@@ -35,6 +35,10 @@ test("D1 candidate selection matches summarized/provenance/source/limit semantic
       id TEXT, source_key TEXT, status TEXT, summary_json TEXT, created_at TEXT,
       embedding_provider TEXT, embedding_model TEXT, embedding_dimensions INTEGER, embedding_input_hash TEXT
     );
+    CREATE TABLE embedding_backlog_failures_v1 (
+      article_id TEXT PRIMARY KEY, attempt_count INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT,
+      last_error_code TEXT, last_error_summary TEXT, exhausted_at TEXT, updated_at TEXT NOT NULL
+    );
     INSERT INTO articles VALUES
       ('eligible-old', 'scotus', 'summarized', '{"koreanTitle":"one"}', '2026-01-01', NULL, NULL, NULL, NULL),
       ('eligible-wrong', 'scotus', 'summarized', '{"koreanTitle":"two"}', '2026-01-02', 'openai', 'wrong', 3, 'hash'),
@@ -96,7 +100,46 @@ test("embedding candidate read uses D1 summarized provenance predicate and sourc
   assert.equal(backlog.status, "completed");
   assert.equal(backlog.skipped, 1, "malformed stored summary JSON is safely skipped");
   assert.match(capturedQuery, /ORDER BY created_at ASC LIMIT \?/u);
-  assert.deepEqual(capturedValues, ["scotus", 3]);
+  assert.equal(typeof capturedValues[0], "string", "the failure-ledger due filter binds the current instant");
+  assert.deepEqual(capturedValues.slice(1), ["scotus", 3]);
+});
+
+test("a persisted embedding failure ledger skips backoff/exhausted rows instead of burning the run budget", async () => {
+  const database = new DatabaseSync(":memory:");
+  database.exec(`
+    CREATE TABLE articles (
+      id TEXT, source_key TEXT, status TEXT, summary_json TEXT, created_at TEXT,
+      embedding_provider TEXT, embedding_model TEXT, embedding_dimensions INTEGER, embedding_input_hash TEXT
+    );
+    CREATE TABLE embedding_backlog_failures_v1 (
+      article_id TEXT PRIMARY KEY, attempt_count INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT,
+      last_error_code TEXT, last_error_summary TEXT, exhausted_at TEXT, updated_at TEXT NOT NULL
+    );
+    INSERT INTO articles VALUES
+      ('poison-backoff', 'scotus', 'summarized', '{"koreanTitle":"one"}', '2026-01-01', NULL, NULL, NULL, NULL),
+      ('poison-exhausted', 'scotus', 'summarized', '{"koreanTitle":"two"}', '2026-01-02', NULL, NULL, NULL, NULL),
+      ('healthy', 'scotus', 'summarized', '{"koreanTitle":"three"}', '2026-01-03', NULL, NULL, NULL, NULL);
+    INSERT INTO embedding_backlog_failures_v1 VALUES
+      ('poison-backoff', 1, '2099-01-01T00:00:00.000Z', 'embedding.backlog_failed', NULL, NULL, '2026-01-01T00:00:00.000Z'),
+      ('poison-exhausted', 5, NULL, 'embedding.backlog_failed', NULL, '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:00.000Z');
+  `);
+  const binding: D1RuntimeDatabase = {
+    prepare(sql) {
+      const statement = database.prepare(sql);
+      let values: SQLInputValue[] = [];
+      const chain: D1RuntimePreparedStatement = {
+        bind(...args) { values = args as SQLInputValue[]; return chain; },
+        async all<T>() { return { success: true, results: statement.all(...values) as unknown as T[] }; },
+        async run() { return { success: true, meta: { changes: Number(statement.run(...values).changes) } }; },
+      };
+      return chain;
+    },
+  };
+  configure(binding);
+  const result = await runEmbeddingBacklog({ sourceKey: "scotus", limit: 10 });
+  assert.equal(result.scanned, 1, "only the healthy article is selected");
+  assert.equal(result.failed, 0);
+  database.close();
 });
 
 test("D1 embedding persistence updates provenance, artifact readiness, and published summary guard", async () => {
