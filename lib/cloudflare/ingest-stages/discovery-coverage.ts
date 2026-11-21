@@ -3,8 +3,36 @@ import {canonicalJson} from "@/lib/backfill/canonical-json";
 import {sha256Canonical} from "../e2e/contracts";
 import {e2eRows} from "../e2e/generation-state";
 import type {D1RuntimeDatabase,D1RuntimePreparedStatement} from "../d1/runtime-binding";
-import {registerIngestStageJob} from "./repository";
+import {registerIngestStageJob,type IngestStageJobRow} from "./repository";
+import {redriveIngestStageDeadLetter} from "./redrive";
+import {INGEST_STAGE_MAX_ATTEMPTS} from "./contracts";
 import type {NativeStageCandidate} from "../../../workers/async-pipeline/src/native-crawler";
+
+/**
+ * Crawl error codes the crawler records as *recoverable* transport/pacing
+ * failures. Only these exact, stable codes are eligible for the reservation
+ * tick's automatic recovery; the broad `crawler.crawl_failed` fallback and any
+ * free-form summary are deliberately excluded. Official 404/410, robots,
+ * non-official host, invalid identity/payload, duplicate-official-case, policy
+ * and human-review outcomes stay fail-closed for an operator.
+ */
+const TRANSIENT_CRAWL_ERROR_CODES: ReadonlySet<string> = new Set([
+  "crawler.transient",
+  "crawler.http_429",
+  "crawler.source_unavailable_transport",
+  "crawler.source_unavailable_429",
+]);
+const TRANSIENT_CRAWL_ERROR_PATTERN = /^crawler\.(?:http_5\d\d|source_unavailable_5\d\d)$/;
+/** One automated transient recovery per crawl job; later failures need an operator. */
+const MAX_AUTOMATED_CRAWL_RECOVERIES = 1;
+const AUTOMATED_RECOVERY_OPERATOR = "discovery-reservation:transient-crawl";
+
+/** True only for a dead-letter crawl job whose recorded failure is provably transient. */
+export function isTransientCrawlDeadLetter(job: Pick<IngestStageJobRow,"status"|"last_error_code">): boolean {
+  if(job.status!=="dead_letter")return false;
+  const code=job.last_error_code??"";
+  return TRANSIENT_CRAWL_ERROR_CODES.has(code)||TRANSIENT_CRAWL_ERROR_PATTERN.test(code);
+}
 
 export interface DiscoveryBucket {
   put(key:string,value:Uint8Array,options?:{httpMetadata?:{contentType?:string}}):Promise<unknown>;
@@ -111,7 +139,7 @@ export async function reserveDiscoveryCandidates(db:D1RuntimeDatabase,bucket:Dis
   const limit=Math.max(1,Math.min(input.limit??20,40));
   if(!input.sources.length)throw Error("discovery.sources_empty");
   const scans=await e2eRows(db,"SELECT * FROM ingest_discovery_scans_v1 WHERE source_key IN ("+input.sources.map(()=>"?").join(",")+") AND (status='pending' OR (status='leased' AND lease_expires_at<=?)) ORDER BY captured_at,job_id LIMIT 10",...input.sources,input.now);
-  let reserved=0,claimed=0;
+  let reserved=0,claimed=0,recovered=0,terminalLinked=0,handled=0;
   for(const scan of scans.filter(x=>input.sources.includes(String(x.source_key)))) {
     const leaseUntil=new Date(Date.parse(input.now)+300000).toISOString(),owner=input.owner+":"+crypto.randomUUID();
     const result=await db.prepare("UPDATE ingest_discovery_scans_v1 SET status='leased',reservation_fence=reservation_fence+1,reservation_owner=?,lease_expires_at=?,updated_at=? WHERE job_id=? AND (status='pending' OR (status='leased' AND lease_expires_at<=?))")
@@ -120,7 +148,7 @@ export async function reserveDiscoveryCandidates(db:D1RuntimeDatabase,bucket:Dis
     if(Number(result.meta?.changes)!==1)continue;claimed++;
     const current=(await e2eRows(db,"SELECT * FROM ingest_discovery_scans_v1 WHERE job_id=?",scan.job_id))[0],fence=Number(current.reservation_fence);
     const snapshot=(await readDiscoverySnapshot(db,bucket,String(scan.job_id)))!;
-    const items=await e2eRows(db,"SELECT * FROM ingest_discovery_items_v1 WHERE job_id=? AND status='pending' ORDER BY priority DESC,candidate_id LIMIT ?",scan.job_id,limit-reserved);
+    const items=await e2eRows(db,"SELECT * FROM ingest_discovery_items_v1 WHERE job_id=? AND status='pending' ORDER BY priority DESC,candidate_id LIMIT ?",scan.job_id,limit-handled);
     const guard=(token:string)=>db.prepare("INSERT INTO ingest_discovery_commit_guards_v1(token,assertion) VALUES (?,CASE WHEN EXISTS(SELECT 1 FROM ingest_discovery_scans_v1 WHERE job_id=? AND status='leased' AND reservation_owner=? AND reservation_fence=? AND lease_expires_at>?) THEN 1 ELSE 0 END)").bind(token,scan.job_id,owner,fence,input.clock?.()??input.now);
     for(const item of items) {
       const pinned=snapshot.items.find(x=>x.candidateId===item.candidate_id);
@@ -128,17 +156,42 @@ export async function reserveDiscoveryCandidates(db:D1RuntimeDatabase,bucket:Dis
       if(!pinned||await sha256Canonical(candidate)!==item.snapshot_hash||pinned.snapshotHash!==item.snapshot_hash||pinned.sourceVersion!==item.source_version||pinned.artifactRef!==item.artifact_ref)throw Error("discovery.candidate_mismatch");
       await bucket.put(String(item.artifact_ref),new TextEncoder().encode(canonicalJson(candidate)),{httpMetadata:{contentType:"application/json"}});
       const registration=await registerIngestStageJob(db,{stage:"crawl",articleId:String(item.candidate_id),sourceKey:String(scan.source_key),sourceVersion:String(item.source_version),contentHash:String(item.snapshot_hash),payloadRef:String(item.artifact_ref),priority:Number(item.priority),now:input.now});
+      // The crawl idempotency key is pinned to the candidate snapshot, so a new
+      // discovery day re-uses a *previous* dead-letter job for the same candidate
+      // instead of doing any crawl work. Only a transiently failed job may be
+      // recovered once, in place, on this ordinary path. Terminal source/policy,
+      // duplicate and human-review outcomes are linked to their existing job and
+      // counted separately, so they neither block nor masquerade as new work.
+      let crawlJob=registration.job,live=true;
+      if(crawlJob.status==="dead_letter") {
+        live=false;
+        // `max_attempts > INGEST_STAGE_MAX_ATTEMPTS` proves the row was already
+        // redriven (redrive extends the budget). This holds even if the audit
+        // ledger write failed, so an audit failure or a racing tick can never
+        // reset the single automated-recovery budget.
+        if(isTransientCrawlDeadLetter(crawlJob)&&crawlJob.max_attempts<=INGEST_STAGE_MAX_ATTEMPTS) {
+          const prior=await e2eRows(db,"SELECT COUNT(*) AS count FROM ingest_stage_redrive_records WHERE job_id=? AND operator_id=? AND outcome='redriven'",crawlJob.id,AUTOMATED_RECOVERY_OPERATOR);
+          if(Number(prior[0]?.count??0)<MAX_AUTOMATED_CRAWL_RECOVERIES) {
+            const recovery=await redriveIngestStageDeadLetter(db,{stage:"crawl",jobId:crawlJob.id,operatorId:AUTOMATED_RECOVERY_OPERATOR,reason:"transient-crawl-recovery:"+(crawlJob.last_error_code??"unknown"),expectedFencingToken:crawlJob.claimed_fencing_token??null,now:input.now});
+            if(recovery.outcome==="redriven") {crawlJob={...crawlJob,status:"pending",last_error_code:null,last_error_summary:null};live=true;recovered++;}
+          }
+        }
+        if(!live)terminalLinked++;
+      }
       const token=crypto.randomUUID();
-      await batch(db,[guard(token),db.prepare("UPDATE ingest_discovery_items_v1 SET status='reserved',crawl_job_id=?,updated_at=? WHERE job_id=? AND candidate_id=? AND status='pending'").bind(registration.job.id,input.now,scan.job_id,item.candidate_id),cleanup(db,token)]);reserved++;
+      await batch(db,[guard(token),db.prepare("UPDATE ingest_discovery_items_v1 SET status='reserved',crawl_job_id=?,updated_at=? WHERE job_id=? AND candidate_id=? AND status='pending'").bind(crawlJob.id,input.now,scan.job_id,item.candidate_id),cleanup(db,token)]);
+      if(live)reserved++;
+      handled++;
     }
     const token=crypto.randomUUID();
     await batch(db,[guard(token),db.prepare("UPDATE ingest_discovery_scans_v1 SET status=CASE WHEN EXISTS(SELECT 1 FROM ingest_discovery_items_v1 WHERE job_id=? AND status='pending') THEN 'pending' ELSE 'reserved' END,reservation_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE job_id=?")
       .bind(scan.job_id,input.now,scan.job_id),cleanup(db,token)]);
-    if(reserved>=limit)break;
+    if(handled>=limit)break;
   }
   const pending=(await e2eRows(db,"SELECT COUNT(*) AS count,MIN(s.captured_at) AS oldest FROM ingest_discovery_items_v1 i JOIN ingest_discovery_scans_v1 s ON s.job_id=i.job_id WHERE i.status='pending'"))[0];
   const pendingCount=Number(pending.count),oldestPendingAgeSeconds=pending.oldest?Math.max(0,(Date.parse(input.now)-Date.parse(String(pending.oldest)))/1000):0;
   const stalled=(await e2eRows(db,"SELECT COUNT(*) AS count FROM ingest_discovery_scans_v1 WHERE status='capturing' AND captured_at<=?",new Date(Date.parse(input.now)-1800000).toISOString()))[0];
   const stalledCaptureCount=Number(stalled.count);
-  return {claimed,reserved,pendingCount,oldestPendingAgeSeconds,stalledCaptureCount,requiresAttention:stalledCaptureCount>0||(pendingCount>0&&oldestPendingAgeSeconds>1800)};
+  return {claimed,reserved,recovered,terminalLinked,pendingCount,oldestPendingAgeSeconds,stalledCaptureCount,requiresAttention:stalledCaptureCount>0||(pendingCount>0&&oldestPendingAgeSeconds>1800)};
 }
+
