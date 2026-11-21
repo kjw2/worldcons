@@ -12,3 +12,4 @@ export * from "./repository";
 export * from "./outbox";
 export * from "./dispatcher";
 export * from "./redrive";
+export * from "./retry-policy";

@@ -60,6 +60,7 @@ export interface IngestStageDispatchOutboxRow {
   payload: string;
   status: "pending" | "dispatched" | "failed";
   attempt_count: number;
+  max_attempts: number;
   next_attempt_at: string | null;
   lease_expires_at: string | null;
   last_error_code: string | null;
@@ -67,6 +68,7 @@ export interface IngestStageDispatchOutboxRow {
   created_at: string;
   updated_at: string;
   dispatched_at: string | null;
+  dead_lettered_at: string | null;
 }
 
 /**
@@ -101,8 +103,10 @@ export async function registerIngestStageDispatchOutbox(
             `UPDATE ingest_stage_dispatch_outbox
                 SET payload = ?,
                     status = 'pending',
+                    attempt_count = 0,
                     dispatched_at = NULL,
                     next_attempt_at = ?,
+                    dead_lettered_at = NULL,
                     last_error_code = NULL,
                     last_error_summary = NULL,
                     updated_at = ?
@@ -171,6 +175,7 @@ export async function listPendingIngestStageDispatch(
       .prepare(
         `SELECT * FROM ingest_stage_dispatch_outbox
           WHERE status IN ('pending', 'failed')
+            AND dead_lettered_at IS NULL
             AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
           ORDER BY created_at ASC
           LIMIT ?`,
@@ -198,10 +203,16 @@ export async function markIngestStageDispatchDispatched(
   return changes === 1;
 }
 
+export interface OutboxFailureResult {
+  changed: boolean;
+  /** True when this failure exhausted the attempt budget and moved the row to a durable dead letter. */
+  deadLettered: boolean;
+}
+
 export async function markIngestStageDispatchFailed(
   db: D1RuntimeDatabase,
   input: { messageId: string; errorCode: string; errorSummary?: string | null; now: string; backoffSeconds?: number },
-): Promise<boolean> {
+): Promise<OutboxFailureResult> {
   const nextAttemptAt = new Date(Date.parse(input.now) + (input.backoffSeconds ?? 60) * 1000).toISOString();
   const changes = ensureWrite(
     await run(
@@ -210,16 +221,60 @@ export async function markIngestStageDispatchFailed(
           `UPDATE ingest_stage_dispatch_outbox
               SET status = 'failed',
                   attempt_count = attempt_count + 1,
-                  next_attempt_at = ?,
+                  next_attempt_at = CASE WHEN attempt_count + 1 >= max_attempts THEN NULL ELSE ? END,
+                  dead_lettered_at = CASE WHEN attempt_count + 1 >= max_attempts THEN ? ELSE dead_lettered_at END,
                   last_error_code = ?,
                   last_error_summary = ?,
                   updated_at = ?
-            WHERE message_id = ? AND status IN ('pending', 'failed')`,
+            WHERE message_id = ? AND status IN ('pending', 'failed') AND dead_lettered_at IS NULL`,
         )
-        .bind(nextAttemptAt, input.errorCode, input.errorSummary ?? null, input.now, input.messageId),
+        .bind(nextAttemptAt, input.now, input.errorCode, input.errorSummary ?? null, input.now, input.messageId),
+    ),
+  );
+  if (changes !== 1) return { changed: false, deadLettered: false };
+  const row = await getIngestStageDispatchOutboxByMessageId(db, input.messageId);
+  return { changed: true, deadLettered: Boolean(row?.dead_lettered_at) };
+}
+
+/**
+ * Operator recovery for a terminal dispatch outbox entry. The row's stage job
+ * may itself still be pending (the dispatcher released it on send failure), in
+ * which case the next dispatch pass re-registers the outbox under the current
+ * fencing token. If the stage job is also dead-lettered, redrive it separately
+ * with `redriveIngestStageDeadLetter`.
+ */
+export async function redriveIngestStageDispatchOutbox(
+  db: D1RuntimeDatabase,
+  input: { messageId: string; now: string },
+): Promise<boolean> {
+  const changes = ensureWrite(
+    await run(
+      db
+        .prepare(
+          `UPDATE ingest_stage_dispatch_outbox
+              SET status = 'pending',
+                  attempt_count = 0,
+                  next_attempt_at = ?,
+                  dead_lettered_at = NULL,
+                  last_error_code = NULL,
+                  last_error_summary = NULL,
+                  updated_at = ?
+            WHERE message_id = ? AND status = 'failed' AND dead_lettered_at IS NOT NULL`,
+        )
+        .bind(input.now, input.now, input.messageId),
     ),
   );
   return changes === 1;
+}
+
+/** Counts durable dispatch outbox dead letters, for logs and admin status. */
+export async function countIngestStageDispatchDeadLetters(db: D1RuntimeDatabase): Promise<number> {
+  const rows = ensureRows(
+    await db
+      .prepare(`SELECT COUNT(*) AS count FROM ingest_stage_dispatch_outbox WHERE dead_lettered_at IS NOT NULL`)
+      .all<{ count: number }>(),
+  );
+  return Number(rows[0]?.count) || 0;
 }
 
 export interface IngestCoreBridgeOutboxRow {
@@ -232,6 +287,7 @@ export interface IngestCoreBridgeOutboxRow {
   payload: string;
   status: "pending" | "applied" | "failed";
   attempt_count: number;
+  max_attempts: number;
   next_attempt_at: string | null;
   lease_expires_at: string | null;
   fencing_token: string | null;
@@ -240,6 +296,7 @@ export interface IngestCoreBridgeOutboxRow {
   created_at: string;
   updated_at: string;
   applied_at: string | null;
+  dead_lettered_at: string | null;
 }
 
 /**
@@ -322,6 +379,7 @@ export async function listPendingIngestCoreBridge(
       .prepare(
         `SELECT * FROM ingest_core_bridge_outbox
           WHERE status IN ('pending', 'failed')
+            AND dead_lettered_at IS NULL
             AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
           ORDER BY created_at ASC
           LIMIT ?`,
@@ -352,7 +410,7 @@ export async function markIngestCoreBridgeApplied(
 export async function markIngestCoreBridgeFailed(
   db: D1RuntimeDatabase,
   input: { bridgeKey: string; errorCode: string; errorSummary?: string | null; now: string; backoffSeconds?: number },
-): Promise<boolean> {
+): Promise<OutboxFailureResult> {
   const nextAttemptAt = new Date(Date.parse(input.now) + (input.backoffSeconds ?? 60) * 1000).toISOString();
   const changes = ensureWrite(
     await run(
@@ -361,16 +419,54 @@ export async function markIngestCoreBridgeFailed(
           `UPDATE ingest_core_bridge_outbox
               SET status = 'failed',
                   attempt_count = attempt_count + 1,
-                  next_attempt_at = ?,
+                  next_attempt_at = CASE WHEN attempt_count + 1 >= max_attempts THEN NULL ELSE ? END,
+                  dead_lettered_at = CASE WHEN attempt_count + 1 >= max_attempts THEN ? ELSE dead_lettered_at END,
                   last_error_code = ?,
                   last_error_summary = ?,
                   updated_at = ?
-            WHERE bridge_key = ? AND status IN ('pending', 'failed')`,
+            WHERE bridge_key = ? AND status IN ('pending', 'failed') AND dead_lettered_at IS NULL`,
         )
-        .bind(nextAttemptAt, input.errorCode, input.errorSummary ?? null, input.now, input.bridgeKey),
+        .bind(nextAttemptAt, input.now, input.errorCode, input.errorSummary ?? null, input.now, input.bridgeKey),
+    ),
+  );
+  if (changes !== 1) return { changed: false, deadLettered: false };
+  const row = await getIngestCoreBridgeOutboxByKey(db, input.bridgeKey);
+  return { changed: true, deadLettered: Boolean(row?.dead_lettered_at) };
+}
+
+/** Operator recovery for a terminal ingest->core bridge outbox entry. */
+export async function redriveIngestCoreBridgeOutbox(
+  db: D1RuntimeDatabase,
+  input: { bridgeKey: string; now: string },
+): Promise<boolean> {
+  const changes = ensureWrite(
+    await run(
+      db
+        .prepare(
+          `UPDATE ingest_core_bridge_outbox
+              SET status = 'pending',
+                  attempt_count = 0,
+                  next_attempt_at = ?,
+                  dead_lettered_at = NULL,
+                  last_error_code = NULL,
+                  last_error_summary = NULL,
+                  updated_at = ?
+            WHERE bridge_key = ? AND status = 'failed' AND dead_lettered_at IS NOT NULL`,
+        )
+        .bind(input.now, input.now, input.bridgeKey),
     ),
   );
   return changes === 1;
+}
+
+/** Counts durable ingest->core bridge dead letters, for logs and admin status. */
+export async function countIngestCoreBridgeDeadLetters(db: D1RuntimeDatabase): Promise<number> {
+  const rows = ensureRows(
+    await db
+      .prepare(`SELECT COUNT(*) AS count FROM ingest_core_bridge_outbox WHERE dead_lettered_at IS NOT NULL`)
+      .all<{ count: number }>(),
+  );
+  return Number(rows[0]?.count) || 0;
 }
 
 /**

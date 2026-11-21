@@ -64,6 +64,8 @@ export interface DispatchIngestStagePassResult {
   claimed: number;
   enqueued: number;
   failed: number;
+  /** Outbox entries moved to their durable attempt-budget dead letter by this pass. */
+  deadLettered: number;
   jobIds: string[];
 }
 
@@ -109,6 +111,7 @@ export async function dispatchIngestStagePass(
     claimed: claimed.length,
     enqueued: 0,
     failed: 0,
+    deadLettered: 0,
     jobIds: claimed.map((job) => job.id),
   };
   for (const job of claimed) {
@@ -137,11 +140,12 @@ export async function dispatchIngestStagePass(
     } catch (error) {
       result.failed += 1;
       const code = error instanceof Error ? error.message.slice(0, 120) : "ingest_stage.enqueue_failed";
-      await markIngestStageDispatchFailed(input.ingestDb, {
+      const failure = await markIngestStageDispatchFailed(input.ingestDb, {
         messageId: outbox.message_id,
         errorCode: code,
         now: input.now,
       });
+      if (failure.deadLettered) result.deadLettered += 1;
       if (job.claimed_fencing_token) {
         await failIngestStageJob(input.ingestDb, {
           jobId: job.id,
@@ -169,13 +173,14 @@ export async function reconcileIngestStageDispatch(input: {
   queueFor: (stage: IngestStage) => IngestStageQueueSender;
   limit: number;
   now: string;
-}): Promise<{ scanned: number; resent: number; failed: number }> {
+}): Promise<{ scanned: number; resent: number; failed: number; deadLettered: number }> {
   const pending: IngestStageDispatchOutboxRow[] = await listPendingIngestStageDispatch(input.ingestDb, {
     limit: input.limit,
     now: input.now,
   });
   let resent = 0;
   let failed = 0;
+  let deadLettered = 0;
   for (const entry of pending) {
     const message = JSON.parse(entry.payload) as IngestStageQueueMessage;
     try {
@@ -185,14 +190,15 @@ export async function reconcileIngestStageDispatch(input: {
     } catch (error) {
       failed += 1;
       const code = error instanceof Error ? error.message.slice(0, 120) : "ingest_stage.enqueue_failed";
-      await markIngestStageDispatchFailed(input.ingestDb, {
+      const failure = await markIngestStageDispatchFailed(input.ingestDb, {
         messageId: entry.message_id,
         errorCode: code,
         now: input.now,
       });
+      if (failure.deadLettered) deadLettered += 1;
     }
   }
-  return { scanned: pending.length, resent, failed };
+  return { scanned: pending.length, resent, failed, deadLettered };
 }
 
 export interface CompleteStageInput {

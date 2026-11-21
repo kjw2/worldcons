@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import {
@@ -32,9 +32,12 @@ import {
   applyIngestCoreBridgeOnCore,
   buildIngestCoreBridgeKey,
   getIngestStageDispatchOutboxByMessageId,
+  countIngestStageDispatchDeadLetters,
   listPendingIngestCoreBridge,
   listPendingIngestStageDispatch,
   markIngestStageDispatchDispatched,
+  markIngestStageDispatchFailed,
+  redriveIngestStageDispatchOutbox,
   registerIngestCoreBridgeOutbox,
   registerIngestStageDispatchOutbox,
 } from "../lib/cloudflare/ingest-stages/outbox";
@@ -60,6 +63,7 @@ import path from "node:path";
 
 const NOW = "2026-10-08T00:00:00.000Z";
 const INGEST_SCHEMA = fs.readFileSync(path.join(process.cwd(), "d1", "worldcons_ingest", "0003_ingest_stage_jobs.sql"), "utf8");
+const INGEST_RETRY_SCHEMA = fs.readFileSync(path.join(process.cwd(), "d1", "worldcons_ingest", "0007_ingest_retry_and_outbox_terminal.sql"), "utf8");
 const CORE_SCHEMA = fs.readFileSync(path.join(process.cwd(), "d1", "worldcons_core", "0003_ingest_core_bridge_ledger.sql"), "utf8");
 
 function binding(database: DatabaseSync): D1RuntimeDatabase {
@@ -116,6 +120,7 @@ function createDatabases() {
   const ingest = new DatabaseSync(":memory:");
   const core = new DatabaseSync(":memory:");
   ingest.exec(INGEST_SCHEMA);
+  ingest.exec(INGEST_RETRY_SCHEMA);
   core.exec(CORE_SCHEMA);
   return { ingest, core };
 }
@@ -456,7 +461,7 @@ test("dispatch reconciliation replays a durable pending outbox entry", async () 
     await registerIngestStageDispatchOutbox(ingestDb, { jobId: "j1", queueName: INGEST_STAGE_QUEUES.search, message, now: NOW });
     const { sender, sent } = queueSender();
     const result = await reconcileIngestStageDispatch({ ingestDb, queueFor: () => sender, limit: 10, now: NOW });
-    assert.deepEqual(result, { scanned: 1, resent: 1, failed: 0 });
+    assert.deepEqual(result, { scanned: 1, resent: 1, failed: 0, deadLettered: 0 });
     assert.equal(sent.length, 1);
     assert.equal((await listPendingIngestStageDispatch(ingestDb, { limit: 10, now: NOW })).length, 0);
   } finally {
@@ -562,6 +567,48 @@ test("stage completion requires an atomic D1 batch and an unexpired lease", asyn
   } finally {
     db.ingest.close(); db.core.close();
   }
+});
+
+test("the minute cron wires discovery reservation recovery and the redrive ledger is a verified additive migration", () => {
+  const worker = fs.readFileSync(path.join(process.cwd(), "workers", "async-pipeline", "src", "index.ts"), "utf8");
+  const minute = worker.slice(worker.indexOf('if (controller.cron === "* * * * *")'), worker.indexOf('if (controller.cron === "*/15 * * * *")'));
+  assert.match(minute, /runDiscoveryCoverageScheduled/, "the minute tick must run reservation recovery");
+  assert.match(minute, /runE2ESearchRepairScheduled/, "the existing minute work is preserved");
+  const scheduled = fs.readFileSync(path.join(process.cwd(), "workers", "async-pipeline", "src", "discovery-coverage-scheduled.ts"), "utf8");
+  assert.match(scheduled, /owner:"discovery-minute"/);
+  assert.match(scheduled, /limit:20/);
+  assert.match(scheduled, /ingest_discovery_reservations/);
+  const redriveMigration = fs.readFileSync(path.join(process.cwd(), "d1", "worldcons_ingest", "0004_ingest_stage_redrive.sql"), "utf8");
+  assert.match(redriveMigration, /create table if not exists ingest_stage_redrive_records/);
+  const retryMigration = fs.readFileSync(path.join(process.cwd(), "d1", "worldcons_ingest", "0007_ingest_retry_and_outbox_terminal.sql"), "utf8");
+  assert.match(retryMigration, /@d1-verify[^\n]*last_failure_retryable/);
+  assert.match(retryMigration, /@d1-verify[^\n]*dead_lettered_at/);
+});
+
+test("a dispatch outbox entry is dead-lettered at its bounded attempt budget and can be operator-redriven", async () => {
+  const db = createDatabases();
+  const ingestDb = binding(db.ingest);
+  const job = await registerIngestStageJob(ingestDb, {
+    stage: "discovery", articleId: "native-discovery:fr:1", sourceKey: "fr-conseil-constitutionnel",
+    sourceVersion: "v1", contentHash: "h1", now: NOW,
+  });
+  const [claimed] = await claimIngestStageJobs(ingestDb, { stage: "discovery", workerId: "w1", limit: 1, leaseSeconds: 300, now: NOW });
+  assert.ok(claimed);
+  const message = buildIngestStageQueueMessage({
+    stage: "discovery", jobId: job.job.id, articleId: job.job.article_id, sourceVersion: job.job.source_version,
+    contentHash: job.job.content_hash, fencingToken: claimed.claimed_fencing_token!, enqueuedAt: NOW,
+  });
+  const outbox = await registerIngestStageDispatchOutbox(ingestDb, { jobId: job.job.id, queueName: INGEST_STAGE_QUEUES.discovery, message, now: NOW });
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    const result = await markIngestStageDispatchFailed(ingestDb, { messageId: outbox.message_id, errorCode: "queue_unavailable", now: NOW, backoffSeconds: 0 });
+    assert.equal(result.changed, true);
+    assert.equal(result.deadLettered, attempt === 8);
+  }
+  assert.equal(await countIngestStageDispatchDeadLetters(ingestDb), 1);
+  assert.equal((await listPendingIngestStageDispatch(ingestDb, { limit: 10, now: NOW })).length, 0, "a terminal outbox entry is never re-scanned");
+  assert.deepEqual(await reconcileIngestStageDispatch({ ingestDb, queueFor: () => ({ send: async () => undefined }), limit: 10, now: NOW }), { scanned: 0, resent: 0, failed: 0, deadLettered: 0 });
+  assert.equal(await redriveIngestStageDispatchOutbox(ingestDb, { messageId: outbox.message_id, now: NOW }), true);
+  assert.equal((await listPendingIngestStageDispatch(ingestDb, { limit: 10, now: NOW })).length, 1, "the operator redrive makes it replayable again");
 });
 
 test("stage migrations are additive, verified, and have no destructive statements", () => {

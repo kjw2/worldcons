@@ -398,6 +398,7 @@ export async function redriveIngestStageDeadLetter(
                   claimed_fencing_token = NULL,
                   last_error_code = NULL,
                   last_error_summary = NULL,
+                  last_failure_retryable = NULL,
                   completed_at = NULL,
                   updated_at = ?
             WHERE id = ? AND stage = ? AND status = 'dead_letter' AND claimed_fencing_token IS ?`,

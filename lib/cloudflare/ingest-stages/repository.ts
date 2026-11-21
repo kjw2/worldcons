@@ -40,6 +40,8 @@ export interface IngestStageJobRow {
   lease_expires_at: string | null;
   last_error_code: string | null;
   last_error_summary: string | null;
+  /** 1 = the last failure was transient/retryable, 0 = explicit terminal block, NULL = legacy row. */
+  last_failure_retryable: number | null;
   payload_ref: string | null;
   result_ref: string | null;
   created_at: string;
@@ -368,6 +370,7 @@ export async function failIngestStageJob(
                   claimed_attempt_id = NULL,
                   last_error_code = ?,
                   last_error_summary = ?,
+                  last_failure_retryable = ?,
                   completed_at = ?,
                   updated_at = ?
             WHERE id = ?
@@ -379,6 +382,7 @@ export async function failIngestStageJob(
           nextAttemptAt,
           input.errorCode,
           input.errorSummary ?? null,
+          input.retry ? 1 : 0,
           deadLetter ? input.now : null,
           input.now,
           input.jobId,

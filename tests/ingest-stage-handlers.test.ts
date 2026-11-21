@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import fs from "node:fs";
@@ -46,6 +46,7 @@ const INGEST_SCHEMA = [
   "0001_init.sql",
   "0002_inventory_discovery_idempotency.sql",
   "0003_ingest_stage_jobs.sql",
+  "0007_ingest_retry_and_outbox_terminal.sql",
 ].map((file) => fs.readFileSync(path.join(root, "d1", "worldcons_ingest", file), "utf8")).join("\n");
 const CORE_SCHEMA = [
   "0001_init.sql",
@@ -141,10 +142,10 @@ function franceFetch(): typeof fetch {
     const url = String(input);
     if (url.endsWith("/robots.txt")) return response(ROBOTS);
     if (url === FRANCE_LISTING_URL) {
-      return response(`<a href="${FRANCE_DETAIL_PATH}">Décision n° 2026-912 QPC du 28 septembre 2026</a>`);
+      return response(`<a href="${FRANCE_DETAIL_PATH}">D챕cision n째 2026-912 QPC du 28 septembre 2026</a>`);
     }
     if (url === FRANCE_DETAIL_URL) {
-      return response(`<html><main><h1>Décision n° 2026-912 QPC</h1>${decisionText}</main></html>`);
+      return response(`<html><main><h1>D챕cision n째 2026-912 QPC</h1>${decisionText}</main></html>`);
     }
     throw new Error(`unexpected fetch ${url}`);
   };
@@ -448,7 +449,7 @@ test("G: bounded dispatch-outbox reconciliation replays a pending entry to the c
     const sent: IngestStageQueueMessage[] = [];
     const queueFor = (stage: IngestStage): IngestStageQueueSender => ({ async send(body) { seen.push(stage); sent.push(body); return {}; } });
     const result = await reconcileIngestStageDispatch({ ingestDb: harness.ingestDb, queueFor, limit: 10, now: NOW });
-    assert.deepEqual(result, { scanned: 1, resent: 1, failed: 0 });
+    assert.deepEqual(result, { scanned: 1, resent: 1, failed: 0, deadLettered: 0 });
     assert.deepEqual(seen, ["search"]);
     assert.equal(sent[0].stage, "search");
     assert.equal((await listPendingIngestStageDispatch(harness.ingestDb, { limit: 10, now: NOW })).length, 0);
@@ -584,9 +585,9 @@ function fakeTranslation(dbs: HarnessDatabases, options: { status?: "summarized"
         dbs.core.prepare("UPDATE articles SET translation_status='failed' WHERE id=?").run(articleId);
         return { status: "failed", retryable: options.retryable ?? false, errorCode: "llm.quota" };
       }
-      const summary = options.summaryJson ?? JSON.stringify({ koreanTitle: "요약", summary: { coreSummary: ["핵심"] }, entities: [], tags: [], categories: [], aiMetadata: { provider: "gemini", model: "fake" } });
+      const summary = options.summaryJson ?? JSON.stringify({ koreanTitle: "?붿빟", summary: { coreSummary: ["?듭떖"] }, entities: [], tags: [], categories: [], aiMetadata: { provider: "gemini", model: "fake" } });
       dbs.core.prepare("UPDATE articles SET status='summarized',translation_status='translated',summary_json=?,korean_title=?,summarized_at=?,updated_at=? WHERE id=?")
-        .run(summary, options.koreanTitle ?? "요약", NOW, NOW, articleId);
+        .run(summary, options.koreanTitle ?? "?붿빟", NOW, NOW, articleId);
       return { status: "summarized" };
     },
   };
@@ -692,7 +693,7 @@ test("K2: translate adopts an already durable summary, completes lifecycle state
   try {
     const articleId = await runToNormalize(harness);
     harness.core.prepare("UPDATE articles SET status='summarized',translation_status='translated',summary_json=?,korean_title=?,summarized_at=?,translated_at=?,lifecycle_processing_state='running' WHERE id=?")
-      .run(JSON.stringify({ koreanTitle: "기존 번역", summary: { coreSummary: ["기존 요약"] } }), "기존 번역", NOW, NOW, articleId);
+      .run(JSON.stringify({ koreanTitle: "湲곗〈 踰덉뿭", summary: { coreSummary: ["湲곗〈 ?붿빟"] } }), "湲곗〈 踰덉뿭", NOW, NOW, articleId);
     const translate = await harness.messageFor("translate");
     const result = await harness.consumeStage("translate", translate.map((body, i) => ({ id: `t${i}`, body })));
     assert.equal(result.result.completed, 1, JSON.stringify(result.result));
@@ -883,7 +884,7 @@ test("P: duplicate publish delivery is idempotent (one published row, one queue 
   try {
     const articleId = await runToNormalize(harness);
     harness.core.prepare("UPDATE articles SET status='summarized',translation_status='translated',summary_json=?,korean_title=?,source_metadata=? WHERE id=?")
-      .run(JSON.stringify({ summary: {} }), "요약", JSON.stringify(summaryMetadata()), articleId);
+      .run(JSON.stringify({ summary: {} }), "?붿빟", JSON.stringify(summaryMetadata()), articleId);
     await registerIngestStageJob(harness.ingestDb, { stage: "publish", articleId, sourceVersion: "v", contentHash: "h", now: NOW });
     const claim = await claimIngestStageJobs(harness.ingestDb, { stage: "publish", workerId: "w", limit: 1, leaseSeconds: 300, now: NOW });
     const job = claim.find((j) => j.article_id === articleId)!;

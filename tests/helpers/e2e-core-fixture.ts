@@ -35,8 +35,8 @@ export class SqliteD1 implements D1RuntimeDatabase {
   constructor(withM1:boolean|"search"|"ingest" = true) {
     this.searchOnly=withM1==="search";
     this.db.exec("PRAGMA foreign_keys=ON");
-    const files=withM1==="ingest" ? ["0001_init.sql","0002_inventory_discovery_idempotency.sql","0003_ingest_stage_jobs.sql","0004_ingest_stage_redrive.sql","0005_discovery_coverage.sql"] : withM1==="search" ? ["0001_init.sql","0002_e2e_generation_guards.sql"] : ["0001_init.sql", "0002_translation_pipeline.sql", "0003_ingest_core_bridge_ledger.sql",
-      ...(withM1 ? ["0004_e2e_generations.sql", "0005_e2e_search_repair_outbox.sql", "0006_e2e_search_apply_receipts.sql", "0007_e2e_verification.sql"] : [])];
+    const files=withM1==="ingest" ? ["0001_init.sql","0002_inventory_discovery_idempotency.sql","0003_ingest_stage_jobs.sql","0004_ingest_stage_redrive.sql","0005_discovery_coverage.sql","0006_ingest_stage_canary.sql","0007_ingest_retry_and_outbox_terminal.sql"] : withM1==="search" ? ["0001_init.sql","0002_e2e_generation_guards.sql"] : ["0001_init.sql", "0002_translation_pipeline.sql", "0003_ingest_core_bridge_ledger.sql",
+      ...(withM1 ? ["0004_e2e_generations.sql", "0005_e2e_search_repair_outbox.sql", "0006_e2e_search_apply_receipts.sql", "0007_e2e_verification.sql", "0012_embedding_backlog_failures.sql"] : [])];
     for (const file of files) {
       this.db.exec(readFileSync(new URL(`../../d1/${withM1==="ingest"?"worldcons_ingest":this.searchOnly?"worldcons_search":"worldcons_core"}/${file}`, import.meta.url), "utf8"));
     }

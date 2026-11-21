@@ -23,6 +23,10 @@ const INGEST_SCHEMA = fs.readFileSync(
   path.join(process.cwd(), "d1", "worldcons_ingest", "0003_ingest_stage_jobs.sql"),
   "utf8",
 );
+const RETRY_SCHEMA = fs.readFileSync(
+  path.join(process.cwd(), "d1", "worldcons_ingest", "0007_ingest_retry_and_outbox_terminal.sql"),
+  "utf8",
+);
 const REDRIVE_SCHEMA = fs.readFileSync(
   path.join(process.cwd(), "d1", "worldcons_ingest", "0004_ingest_stage_redrive.sql"),
   "utf8",
@@ -62,6 +66,7 @@ function binding(database: DatabaseSync): D1RuntimeDatabase {
 function createDb() {
   const ingest = new DatabaseSync(":memory:");
   ingest.exec(INGEST_SCHEMA);
+  ingest.exec(RETRY_SCHEMA);
   ingest.exec(REDRIVE_SCHEMA);
   return { ingest, db: binding(ingest) };
 }

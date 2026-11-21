@@ -62,6 +62,7 @@ const INGEST_SCHEMA = [
   "0002_inventory_discovery_idempotency.sql",
   "0003_ingest_stage_jobs.sql",
   "0006_ingest_stage_canary.sql",
+  "0007_ingest_retry_and_outbox_terminal.sql",
 ].map((file) => fs.readFileSync(path.join(root, "d1", "worldcons_ingest", file), "utf8")).join("\n");
 const CORE_SCHEMA = [
   "0001_init.sql",
