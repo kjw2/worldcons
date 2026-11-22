@@ -505,7 +505,7 @@ test("fast list drops a row withdrawn between the eligible window read and the o
   await publish(core, "a");
   let withdrawn = false;
   core.beforeStatement = (sql) => {
-    if (!withdrawn && sql.includes("from article_publications_p3 p") && sql.includes("order by v.original_published_at")) {
+    if (!withdrawn && sql.includes("from articles a indexed by articles_public_list_idx")) {
       withdrawn = true;
       core.db.exec("UPDATE article_publications_p3 SET state='withdrawn'");
     }

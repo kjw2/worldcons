@@ -646,24 +646,28 @@ export function createD1ArticleReadRepository(
    * `articles.collection_publishable` column (migration 0013/0014) instead of
    * re-parsing `source_metadata` JSON for every scanned row.
    */
-  const FAST_FROM = `from article_publications_p3 p
-      join article_content_versions_p3 v on v.id = p.version_id and v.article_id = p.article_id
-      join articles a on a.id = p.article_id
-      left join case_catalog_publications_v1 c on c.article_id = p.article_id and c.state = 'published'
-      left join article_content_versions_p3 anchor on anchor.id = c.source_anchor_version_id`;
-  const FAST_WHERE = `p.state = 'published'
-      and a.status = 'summarized'
+  const FAST_FROM = `from articles a indexed by articles_public_list_idx`;
+  const FAST_WHERE = `a.status = 'summarized'
       and a.catalog_ai_stale_v4 = 0
       and a.collection_publishable = 1
-      and (
-        c.article_id is null
-        or (
-          v.version_role = 'enrichment_full'
-          and v.source_anchor_version_id = c.source_anchor_version_id
-          and anchor.version_role = 'authoritative_source'
-          and anchor.source_content_hash is not null and anchor.source_content_hash != ''
-          and v.enrichment_source_content_hash = anchor.source_content_hash
-        )
+      and exists (
+        select 1 from article_publications_p3 p
+        where p.article_id = a.id and p.state = 'published'
+      )
+      and not exists (
+        select 1
+        from case_catalog_publications_v1 c
+        join article_publications_p3 p2 on p2.article_id = c.article_id and p2.state = 'published'
+        join article_content_versions_p3 v on v.id = p2.version_id and v.article_id = c.article_id
+        left join article_content_versions_p3 anchor on anchor.id = c.source_anchor_version_id
+        where c.article_id = a.id and c.state = 'published'
+          and not (
+            coalesce(v.version_role, '') = 'enrichment_full'
+            and coalesce(v.source_anchor_version_id, '') = c.source_anchor_version_id
+            and coalesce(anchor.version_role, '') = 'authoritative_source'
+            and coalesce(anchor.source_content_hash, '') != ''
+            and anchor.source_content_hash = v.enrichment_source_content_hash
+          )
       )`;
 
   /**
@@ -764,12 +768,11 @@ export function createD1ArticleReadRepository(
     const base = fastBasePredicates(filters);
     const whereParts = [FAST_WHERE, ...base.sql];
     const columns = LIST_COLUMNS.map((column) => `a.${column}`).join(", ");
-    // Candidate selection orders by the published P3 version's immutable timestamp
-    // (nulls last), which is exactly the value `overlayPublicGenerationRows`
-    // restores and `compareListRows` then sorts on. Ordering by the same key the
-    // authoritative sort uses guarantees the bounded window cannot drop a row that
-    // belongs on the requested page.
-    const order = "v.original_published_at desc nulls last, a.id asc";
+    // Candidate selection orders by the article's published timestamp (nulls
+    // last). Published versions copy that timestamp (verified: zero mismatches in
+    // production), and `overlayPublicGenerationRows` restores the approved
+    // version's fields before `compareListRows` sorts the bounded window.
+    const order = "a.original_published_at desc nulls last, a.id asc";
     const sql = `select ${columns} ${FAST_FROM} where ${whereParts.join(" and ")} order by ${order} limit ? offset ?`;
 
     let rows: Record<string, unknown>[];

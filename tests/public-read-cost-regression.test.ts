@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
@@ -130,7 +130,7 @@ test("public list candidate SQL uses the materialized predicate and a bounded wi
   assert.equal(cost.rowsReadAvailable, true);
   assert.ok(cost.rowsRead <= 2 * (10 + 60 + 60 + 1), `one page must stay below the window budget, read ${cost.rowsRead} rows`);
 
-  const candidate = captured.find((entry) => entry.sql.includes("from article_publications_p3 p"));
+  const candidate = captured.find((entry) => entry.sql.includes("from articles a indexed by articles_public_list_idx"));
   assert.ok(candidate, "the bounded public candidate SQL must be issued");
   assert.match(candidate.sql, /a\.collection_publishable = 1/);
   assert.doesNotMatch(candidate.sql, /json_extract|json_type/, "the public list path must not parse JSON per row");
@@ -160,7 +160,7 @@ test("deep public list pages stay page-sized instead of loading the bounded corp
   const result = await repository.listArticles({ page: 50, pageSize: 10, count: "none" });
   assert.equal(result.items.length, 10);
 
-  const candidate = captured.find((entry) => entry.sql.includes("from article_publications_p3 p"));
+  const candidate = captured.find((entry) => entry.sql.includes("from articles a indexed by articles_public_list_idx"));
   assert.ok(candidate);
   const [windowSize, windowOffset] = candidate.params.slice(-2) as [number, number];
   assert.equal(windowOffset, (50 - 1) * 10 - 60, "the SQL offset is the requested page minus the bounded lookbehind");
