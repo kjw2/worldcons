@@ -1,5 +1,13 @@
 # Progress
 
+## 2026-11-23 Public read cost / Cloudflare usage spike (branch `perf/cf-usage-20261123-worldcons`)
+
+- **Incident.** 11/22 Workers requests 15,554/day (usual ~6,500); `worldcons_core` rows read 5.10e8/day. A sustained external `/list` crawl (~31,721/day) hit an edge-uncached list read that scanned up to ~10k article rows per request.
+- **Implemented.** Cache API edge cache for `/` and `/list` (normalized key drops `pageSize`/`view`/`sort`; `public, s-maxage=60, stale-while-revalidate=300`; cookie/auth/RSC/non-HTML always bypass). Materialized `articles.collection_publishable` + sync triggers + indexes via D1 migrations 0013/0014. Fast list SQL now uses a page-sized lookbehind/lookahead window at any page depth instead of the bounded corpus fallback. Legacy/exact reads push the materialized predicate into SQL. Exact-count policy centralized (`publicArticleListCountMode`). Per-request `meta.rows_read` logging + `x-worldcons-rows-read` headers. Worker-level `/list` 60/min/IP limit with `WORLDCONS_PUBLIC_RATE_LIMIT_DISABLED` escape hatch.
+- **WAF.** Blocked: `worldcons.cclib.workers.dev` has no customer-managed zone and the operator OAuth token is `zone (read)` only. Worker limit is the enforced control.
+- **Docs / rollback.** `docs/operations/worldcons-public-read-cost-20261123.md`.
+- **Verification.** `pnpm test:public-cost`, `test:article-reads`, `test:article-read-shadow`, `test:d1-case-catalog`, `test:d1-shadow-all`, `test:d1-schema`, `test:d1-migrate`, `test:d1-apply-schema`, `test:public-regression`, `pnpm typecheck`, `pnpm lint` (0 errors), `pnpm build:vinext`, and `wrangler deploy --dry-run` pass. `pnpm check` retains the pre-existing `app/admin/page.tsx` `AdminOperationsOverview` failure already present on `origin/main`.
+
 ## 2026-10-15 P2-M4 US private review preparation — deployed & genuinely verified in Production
 
 - **Code committed/pushed:** `5a8a8e90d0f49aebe22415c56151d6e5b588e558`. App Worker `worldcons` Production version `3653c5b9-3662-4837-a857-c79e4fb03999` deployed first with Vinext-generated `dist/server/wrangler.json`; `worldcons-ingest` version `cc70ede7-8972-4f47-a477-641500ac2418` deployed second. Health verified US M8-only and FR/ES/DE staged; no owner switch.
