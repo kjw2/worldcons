@@ -28,6 +28,26 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   return articleReads().listArticles(filters);
 }
 
+/**
+ * Public list/search count policy.
+ *
+ * The approximate total is the default: the home and `/list` surfaces derive
+ * their total from the cheap per-jurisdiction counter and never ask D1 for a
+ * full-corpus exact count. Only a genuine narrowing filter (`q`/`source`/`type`/
+ * `tag`/`language`/`ids`) asks for an exact count, matching the `/search`
+ * policy. `jurisdiction` and `range` stay on the counter path because
+ * `listJurisdictionArticleCounts` already carries them.
+ */
+export function publicArticleListCountMode(filters: ArticleListFilters = {}): "exact" | "none" {
+  if (filters.ids) return "exact";
+  return filters.q || filters.source || filters.type || filters.tag || filters.language ? "exact" : "none";
+}
+
+/** True when the approximate jurisdiction counter can supply the list total. */
+export function canUseJurisdictionTotal(filters: ArticleListFilters = {}): boolean {
+  return publicArticleListCountMode(filters) === "none";
+}
+
 export async function listPublicSitemapArticles() {
   observePublicProjectionRead();
   return articleReads().listPublicSitemapArticles();

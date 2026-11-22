@@ -121,7 +121,7 @@ test("the live D1 schema validates against the scanned Postgres DDL", () => {
   const articles = report.tables.find((table) => table.name === "articles");
   assert.ok(articles);
   assert.deepEqual(articles.primaryKey, ["id"]);
-  assert.equal(articles.columns, 64);
+  assert.equal(articles.columns, 65);
   assert.deepEqual(articles.relocated, ["raw_text->r2", "search_vector->fts5", "embedding->vectorize"]);
 
   const searchFts = report.tables.find((table) => table.name === "search_fts");

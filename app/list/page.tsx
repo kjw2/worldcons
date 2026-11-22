@@ -7,7 +7,7 @@ import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
-import { listArticles, listJurisdictionArticleCounts, listSources, listTags, listTopViewedArticles } from "@/lib/db/queries";
+import { listArticles, listJurisdictionArticleCounts, listSources, listTags, listTopViewedArticles, publicArticleListCountMode } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { publicListPaginationMetadata } from "@/lib/seo/list-pagination";
@@ -53,7 +53,7 @@ const getListTopViewedArticles = unstable_cache(
 );
 
 function canUseJurisdictionTotal(filters: ArticleListFilters) {
-  return !filters.q && !filters.source && !filters.type && !filters.tag && !filters.language;
+  return publicArticleListCountMode(filters) === "none";
 }
 
 function withJurisdictionTotal(articles: ArticleListResult, jurisdictionArticleCounts: Record<string, number>, filters: ArticleListFilters) {

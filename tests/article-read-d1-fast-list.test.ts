@@ -71,6 +71,8 @@ const NOT_PUBLISHABLE = JSON.stringify({ collection: { publishable: false } });
 function createCore() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(readFileSync(new URL("../d1/worldcons_core/0001_init.sql", import.meta.url), "utf8"));
+  sqlite.exec(readFileSync(new URL("../d1/worldcons_core/0013_public_list_publishable.sql", import.meta.url), "utf8"));
+  sqlite.exec(readFileSync(new URL("../d1/worldcons_core/0014_public_list_publishable_sync.sql", import.meta.url), "utf8"));
   return sqlite;
 }
 

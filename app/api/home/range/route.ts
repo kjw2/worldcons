@@ -1,7 +1,7 @@
 import { freshnessAwarePublicCache as unstable_cache } from "@/lib/public-freshness-cache";
 import { NextResponse } from "next/server";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG } from "@/lib/public-content-cache";
-import { listArticles, listJurisdictionArticleCounts } from "@/lib/db/queries";
+import { listArticles, listJurisdictionArticleCounts, publicArticleListCountMode } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { parseArticleListApiParams, publicApiValidationErrorResponse } from "@/lib/security/public-api-validation";
 import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
@@ -9,7 +9,7 @@ import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate
 export const revalidate = 60;
 
 function canUseJurisdictionTotal(filters: ArticleListFilters) {
-  return !filters.q && !filters.source && !filters.type && !filters.tag && !filters.language;
+  return publicArticleListCountMode(filters) === "none";
 }
 
 function withJurisdictionTotal(articles: ArticleListResult, jurisdictionArticleCounts: Record<string, number>, filters: ArticleListFilters) {

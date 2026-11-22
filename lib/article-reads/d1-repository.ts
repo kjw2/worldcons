@@ -165,13 +165,16 @@ const LIST_ORDER: D1RuntimeReadOrder[] = [
 const D1_IN_BATCH_SIZE = 80;
 
 /**
- * Bounded public list fast path. It never reads more than `offset + pageSize +
- * FAST_LIST_LOOKAHEAD` eligible rows and refuses (falls back) once the requested
- * window would exceed `FAST_LIST_MAX_ROWS`, so a hot first page can never become a
- * full-corpus read.
+ * Bounded public list fast path. The authored SQL is given a page window
+ * (`limit` + a small lookbehind/lookahead around the requested offset), so the
+ * rows materialized and hydrated in JS stay O(pageSize) at any page depth. It
+ * never loads the corpus and refuses (falls back to the bounded legacy read)
+ * beyond `FAST_LIST_MAX_OFFSET`, matching the 10k deep-page ceiling used by the
+ * ranked search path.
  */
-const FAST_LIST_MAX_ROWS = 500;
+const FAST_LIST_MAX_OFFSET = 10_000;
 const FAST_LIST_LOOKAHEAD = 60;
+const FAST_LIST_LOOKBEHIND = 60;
 
 function batches<T>(values: readonly T[], size = D1_IN_BATCH_SIZE): T[][] {
   const result: T[][] = [];
@@ -638,8 +641,10 @@ export function createD1ArticleReadRepository(
    * `p3PublishedArticleIds`: a published P3 row is public when no published
    * catalog correction exists, or when its `enrichment_full` snapshot points at
    * the current catalog anchor and matches the authoritative source hash. The
-   * article must also be summarized, not catalog-stale, and textually publishable
-   * (`json_extract(...) in (1, 'true')` mirrors `isTextuallyPublishable`).
+   * article must also be summarized, not catalog-stale, and textually
+   * publishable. The textual predicate is read from the materialized
+   * `articles.collection_publishable` column (migration 0013/0014) instead of
+   * re-parsing `source_metadata` JSON for every scanned row.
    */
   const FAST_FROM = `from article_publications_p3 p
       join article_content_versions_p3 v on v.id = p.version_id and v.article_id = p.article_id
@@ -649,13 +654,7 @@ export function createD1ArticleReadRepository(
   const FAST_WHERE = `p.state = 'published'
       and a.status = 'summarized'
       and a.catalog_ai_stale_v4 = 0
-      and (
-        json_type(a.source_metadata, '$.collection.publishable') = 'true'
-        or (
-          json_type(a.source_metadata, '$.collection.publishable') = 'text'
-          and json_extract(a.source_metadata, '$.collection.publishable') = 'true'
-        )
-      )
+      and a.collection_publishable = 1
       and (
         c.article_id is null
         or (
@@ -743,12 +742,12 @@ export function createD1ArticleReadRepository(
   }
 
   /**
-   * Bounded, low-row public list read. It reads only `offset + pageSize + lookahead`
-   * eligible article rows (never a full-corpus read), applies the E2E/immutable
-   * generation overlay to just that window, then sorts and pages it. Rows dropped
-   * by the overlay are absorbed by a bounded lookahead; if the window is exhausted
-   * before a full page can be proven, the request falls back to the exact legacy
-   * composition. Returns null to signal a safe fallback.
+   * Bounded, low-row public list read. The authored SQL returns only a
+   * page-sized window around the requested offset (with a small lookbehind and
+   * lookahead), so the rows materialized and hydrated in JS stay O(pageSize)
+   * even for deep pages. The overlay then trims the window; if it is exhausted
+   * before a full page can be proven, the request falls back to the bounded
+   * legacy composition. Returns null to signal a safe fallback.
    */
   async function tryListArticlesFast(
     binding: D1RuntimeDatabase,
@@ -757,10 +756,11 @@ export function createD1ArticleReadRepository(
     pageSize: number,
   ): Promise<ArticleListResult | null> {
     const from = (page - 1) * pageSize;
-    if (from + pageSize > FAST_LIST_MAX_ROWS) return null;
+    if (from > FAST_LIST_MAX_OFFSET) return null;
 
-    const needed = from + pageSize + 1;
-    const cap = Math.min(needed + FAST_LIST_LOOKAHEAD, FAST_LIST_MAX_ROWS);
+    const windowStart = Math.max(0, from - FAST_LIST_LOOKBEHIND);
+    const relativeFrom = from - windowStart;
+    const windowSize = relativeFrom + pageSize + FAST_LIST_LOOKAHEAD + 1;
     const base = fastBasePredicates(filters);
     const whereParts = [FAST_WHERE, ...base.sql];
     const columns = LIST_COLUMNS.map((column) => `a.${column}`).join(", ");
@@ -770,7 +770,7 @@ export function createD1ArticleReadRepository(
     // authoritative sort uses guarantees the bounded window cannot drop a row that
     // belongs on the requested page.
     const order = "v.original_published_at desc nulls last, a.id asc";
-    const sql = `select ${columns} ${FAST_FROM} where ${whereParts.join(" and ")} order by ${order} limit ?`;
+    const sql = `select ${columns} ${FAST_FROM} where ${whereParts.join(" and ")} order by ${order} limit ? offset ?`;
 
     let rows: Record<string, unknown>[];
     try {
@@ -779,7 +779,7 @@ export function createD1ArticleReadRepository(
         table: requireTable("articles"),
         select: [...LIST_COLUMNS],
         sql,
-        params: [...base.params, cap],
+        params: [...base.params, windowSize, windowStart],
       });
     } catch {
       return null;
@@ -789,10 +789,10 @@ export function createD1ArticleReadRepository(
     const approved = await overlayPublicGenerationRows(binding, rows);
     approved.sort(compareListRows);
 
-    if (approved.length < needed && rows.length >= cap) return null;
+    if (approved.length < relativeFrom + pageSize && rows.length >= windowSize) return null;
 
-    const hasMore = approved.length > from + pageSize;
-    const pageRows = approved.slice(from, from + pageSize);
+    const hasMore = approved.length > relativeFrom + pageSize;
+    const pageRows = approved.slice(relativeFrom, relativeFrom + pageSize);
     const hydrated = await hydrateArticleTags(binding, pageRows);
     let items = hydrated.map((row) =>
       articleRowToItem(articleRowForSelect(row, "list"), { includeSummaryJson: false, includeDetailFields: false }),
@@ -849,6 +849,10 @@ export function createD1ArticleReadRepository(
       : [
           { column: "status", value: "summarized" },
           { column: "catalog_ai_stale_v4", value: 0 },
+          // Materialized textual publishability (migration 0013/0014) replaces
+          // the per-row `json_extract(source_metadata, ...)` filter that used to
+          // run in JS over the bounded (maxRows) legacy read.
+          { column: "collection_publishable", value: 1 },
           ...baseWhere,
         ];
 

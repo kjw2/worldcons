@@ -112,7 +112,7 @@ function createFakeD1(tables: Record<string, Record<string, unknown>[]>) {
 }
 
 function baseArticle(overrides: Record<string, unknown>) {
-  return {
+  const merged: Record<string, unknown> = {
     id: "case-a",
     slug: "us-a",
     source_key: "us-scotus",
@@ -143,6 +143,10 @@ function baseArticle(overrides: Record<string, unknown>) {
     raw_text_blob_contract_version: null,
     ...overrides,
   };
+  const metadata = merged.source_metadata as { collection?: { publishable?: unknown } } | undefined;
+  const publishable = metadata?.collection?.publishable;
+  merged.collection_publishable = publishable === true || publishable === "true" ? 1 : 0;
+  return merged;
 }
 
 function anchorVersion(overrides: Record<string, unknown>) {

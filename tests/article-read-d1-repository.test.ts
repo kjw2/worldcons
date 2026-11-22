@@ -163,6 +163,8 @@ const TAG_ROW: SupabaseTagRow = {
 };
 
 function d1Article(overrides: Record<string, unknown> = {}) {
+  const sourceMetadata = (overrides.source_metadata ?? { collection: { publishable: true } }) as Record<string, unknown>;
+  const publishable = (sourceMetadata as { collection?: { publishable?: unknown } } | undefined)?.collection?.publishable;
   return {
     id: "article-1",
     slug: "case-1",
@@ -184,7 +186,7 @@ function d1Article(overrides: Record<string, unknown> = {}) {
     cleaned_text: "cleaned text",
     content_hash: "hash-1",
     summary_json: SUMMARY,
-    source_metadata: { collection: { publishable: true } },
+    source_metadata: sourceMetadata,
     error_metadata: null,
     raw_text_storage_ref: null,
     raw_text_blob_hash: null,
@@ -192,6 +194,7 @@ function d1Article(overrides: Record<string, unknown> = {}) {
     raw_text_externalized_at: null,
     raw_text_blob_contract_version: null,
     catalog_ai_stale_v4: 0,
+    collection_publishable: publishable === true || publishable === "true" ? 1 : 0,
     ...overrides,
   };
 }
@@ -444,7 +447,7 @@ test("D1 article adapter batches large tag article-id filters below the bind cei
 
   const articleReads = fake.calls.filter((call) => call.table === "articles");
   assert.equal(articleReads.length, 2, "105 tagged article ids must be split into two D1 reads");
-  assert.ok(articleReads.every((call) => call.params.length <= 83));
+  assert.ok(articleReads.every((call) => call.params.length <= 84), "each article read keeps IN params plus predicates/LIMIT below the safe ceiling");
 });
 
 test("D1 article adapter is bounded: overflow and unsupported count are skips", async () => {

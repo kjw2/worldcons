@@ -48,6 +48,7 @@ const articles: TableSpec = {
     uniqueIndex("articles_canonical_url_key", ["canonical_url"]),
     uniqueIndex("articles_id_source_key_v4_key", ["id", "source_key"]),
     index("articles_translation_queue_idx", ["translation_status", "translation_next_attempt_at", "created_at", "id"]),
+    index("articles_public_list_idx", ["status", "catalog_ai_stale_v4", "collection_publishable", "original_published_at", "id"]),
   ],
   columns: [
     { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
@@ -121,6 +122,14 @@ const articles: TableSpec = {
     { name: "raw_text_blob_size", type: "bigint", note: "decimal TEXT (plan 6.1 bigint rule)" },
     { name: "raw_text_externalized_at", type: "timestamptz" },
     { name: "raw_text_blob_contract_version", type: "text" },
+    {
+      name: "collection_publishable",
+      type: "integer",
+      nn: true,
+      def: "0",
+      native: true,
+      note: "materialized public list predicate derived from source_metadata.collection.publishable (D1-only; kept in sync by migration 0013 triggers)",
+    },
   ],
 };
 const tags: TableSpec = {

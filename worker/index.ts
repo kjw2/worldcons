@@ -85,6 +85,15 @@ import { setRuntimeGatewayEnvironment } from "@/lib/ai/gateway-runtime";
 import { runD1PublishArticle, runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
 import { syncSearchProjectionForArticle } from "@/lib/cloudflare/search-projection/d1-sync";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
+import { createD1ReadCost, wrapD1BindingWithReadCost, type D1ReadCost } from "@/lib/cloudflare/d1/read-cost";
+import { serveWithEdgeCache, type EdgeCacheStorage } from "@/lib/cloudflare/public-edge-cache-runtime";
+import {
+  consumeFixedWindow,
+  createPublicRateLimitStore,
+  pruneExpiredRateLimitEntries,
+  publicRateLimitKey,
+} from "@/lib/cloudflare/public-rate-limit";
+import { edgeCacheKeyUrl } from "@/lib/cloudflare/public-edge-cache";
 
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
@@ -161,8 +170,95 @@ const OPS_WRITE_BOUNDARY_PATHS = new Set([
   CORE_PUBLICATION_BOUNDARY_PATH,
 ]);
 
+/** Public routes whose per-request D1 cost is logged and exposed as headers. */
+const PUBLIC_READ_METERED_PATHS = new Set(["/", "/list", "/search"]);
+
+/**
+ * Worker-level fallback when WAF rate limiting is not available on the hostname.
+ * 60 origin renders per client IP per minute on the crawl-heavy archive list.
+ */
+const PUBLIC_LIST_RATE_LIMIT = 60;
+const PUBLIC_LIST_RATE_WINDOW_MS = 60_000;
+const publicRateLimitStore = createPublicRateLimitStore();
+
+interface EdgeCacheGlobal {
+  caches?: { default?: EdgeCacheStorage };
+}
+
+function edgeCacheStorage(): EdgeCacheStorage | null {
+  const cache = (globalThis as EdgeCacheGlobal).caches?.default;
+  if (!cache || typeof cache.match !== "function" || typeof cache.put !== "function") return null;
+  return cache;
+}
+
+function clientAddress(request: Request): string {
+  return request.headers.get("cf-connecting-ip") ?? "";
+}
+
+function publicListRateLimitResponse(request: Request, env: WorldconsWorkerEnv): Response | null {
+  if (env.WORLDCONS_PUBLIC_RATE_LIMIT_DISABLED === "true") return null;
+  if (request.method !== "GET") return null;
+  let pathname: string;
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    return null;
+  }
+  if (pathname !== "/list") return null;
+  if (request.headers.get("authorization") || request.headers.get("cookie")) return null;
+  const now = Date.now();
+  pruneExpiredRateLimitEntries(publicRateLimitStore, now);
+  const key = publicRateLimitKey(pathname, clientAddress(request));
+  const decision = consumeFixedWindow(
+    publicRateLimitStore.get(key),
+    PUBLIC_LIST_RATE_LIMIT,
+    PUBLIC_LIST_RATE_WINDOW_MS,
+    now,
+  );
+  publicRateLimitStore.set(key, decision.state);
+  if (decision.allowed) return null;
+  console.log(JSON.stringify({ event: "public_list_rate_limited", pathname, retryAfterSeconds: decision.retryAfterSeconds }));
+  return new Response("Too Many Requests", {
+    status: 429,
+    headers: {
+      "retry-after": String(decision.retryAfterSeconds),
+      "cache-control": "no-store",
+      "content-type": "text/plain; charset=utf-8",
+    },
+  });
+}
+
+function withPublicReadObservability(
+  response: Response,
+  pathname: string,
+  cost: D1ReadCost,
+  startedMs: number,
+  cacheStatus: string,
+): Response {
+  if (!PUBLIC_READ_METERED_PATHS.has(pathname)) return response;
+  const headers = new Headers(response.headers);
+  headers.set("x-worldcons-rows-read", String(cost.rowsRead));
+  headers.set("x-worldcons-rows-read-available", String(cost.rowsReadAvailable));
+  headers.set("x-worldcons-read-ms", String(Date.now() - startedMs));
+  console.log(JSON.stringify({
+    event: "public_read_cost",
+    path: pathname,
+    status: response.status,
+    rowsRead: cost.rowsRead,
+    readQueries: cost.queries,
+    rowsReadAvailable: cost.rowsReadAvailable,
+    durationMs: Date.now() - startedMs,
+    edgeCache: cacheStatus,
+  }));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
-  fetch(request: Request, env: WorldconsWorkerEnv, ctx: WorkerExecutionContextLike) {
+  async fetch(request: Request, env: WorldconsWorkerEnv, ctx: WorkerExecutionContextLike) {
     // M13 permanent D1 authority profile. This is the single bounded switch:
     // when `WORLDCONS_M13_AUTHORITY_PROFILE=d1` the authored per-domain
     // selectors are applied together when the permanent `d1` profile is set.
@@ -171,6 +267,8 @@ export default {
     const authorityEnv = applyM13AuthorityProfileToEnvironment(
       env as Record<string, string | undefined>,
     ) as WorldconsWorkerEnv;
+    const startedMs = Date.now();
+    const readCost = createD1ReadCost();
     setRuntimePlatform("cloudflare-worker");
     setRuntimeGatewayEnvironment(env);
     setRuntimeAuthEnvironment({
@@ -184,7 +282,9 @@ export default {
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
     setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW);
     setRuntimeD1Bindings({
-      worldcons_core: env.WORLDCONS_CORE,
+      worldcons_core: env.WORLDCONS_CORE
+        ? wrapD1BindingWithReadCost(env.WORLDCONS_CORE, readCost)
+        : env.WORLDCONS_CORE,
       worldcons_ingest: env.WORLDCONS_INGEST,
       worldcons_ops: env.WORLDCONS_OPS,
       worldcons_search: env.WORLDCONS_SEARCH,
@@ -224,7 +324,21 @@ export default {
         authorityEnv as unknown as WorldconsOpsWriteWorkerEnv,
       );
     }
-    return handler.fetch(request, env, ctx);
+    const limited = publicListRateLimitResponse(request, env);
+    if (limited) return limited;
+    let pathname = "";
+    try {
+      pathname = new URL(request.url).pathname;
+    } catch {
+      // A malformed URL is left to the handler's own error path.
+    }
+    const edge = await serveWithEdgeCache({
+      request,
+      cache: edgeCacheStorage(),
+      fetchOrigin: () => Promise.resolve(handler.fetch(request, env, ctx)),
+      waitUntil: (promise) => ctx.waitUntil(promise),
+    });
+    return withPublicReadObservability(edge.response, pathname, readCost, startedMs, edge.status);
   },
 };
 
@@ -298,7 +412,20 @@ export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServ
 export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
   async revalidatePublicContentCache() {
     const outcome = invalidatePublicContentCaches();
-    return {revalidated:outcome.revalidated,tagCount:outcome.tags.length,pathCount:outcome.paths.length};
+    const env = this.env as Record<string, string | undefined>;
+    const origin = (env.APP_BASE_URL ?? env.WORLDCONS_BASE_URL ?? "").trim();
+    const cache = edgeCacheStorage();
+    let purged = 0;
+    if (origin && cache) {
+      for (const path of ["/", "/list"]) {
+        try {
+          if (await cache.delete(edgeCacheKeyUrl(`${origin}${path}`))) purged += 1;
+        } catch {
+          // A purge miss/failure is bounded by the 60s edge TTL.
+        }
+      }
+    }
+    return {revalidated:outcome.revalidated,tagCount:outcome.tags.length,pathCount:outcome.paths.length,purged};
   }
 
   async runPublicationDrain(input: { limit?: number }) {
