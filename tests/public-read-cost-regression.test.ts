@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
@@ -217,4 +217,14 @@ test("D1 read-cost probe accumulates result.meta.rows_read and flags missing met
   } as unknown as D1RuntimeDatabase;
   await wrapD1BindingWithReadCost(noMeta, missing).prepare("select 1").bind().all();
   assert.equal(missing.rowsReadAvailable, false);
+});
+
+test("the crawlable /list surface never requests a full exact count and keeps filter data on a plain cache", () => {
+  const listPage = readFileSync(new URL("../app/list/page.tsx", import.meta.url), "utf8");
+  assert.match(listPage, /getListFilterData = plainUnstableCache\(/);
+  assert.match(listPage, /getListArticles = freshnessAwarePublicCache\(/);
+  assert.match(listPage, /count: "none" as const/);
+  assert.doesNotMatch(listPage, /count: countFromJurisdictions \? "none" : "exact"/);
+  const homeRange = readFileSync(new URL("../app/api/home/range/route.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(homeRange, /count: "exact"/);
 });

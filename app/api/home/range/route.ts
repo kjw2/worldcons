@@ -36,7 +36,9 @@ const getHomeRangePayload = unstable_cache(
   async (filters: ArticleListFilters) => {
     const countFromJurisdictions = canUseJurisdictionTotal(filters);
     const [articles, jurisdictionArticleCounts] = await Promise.all([
-      listArticles({ ...filters, count: countFromJurisdictions ? "none" : "exact" }),
+      // Narrow filters stay on the bounded fast path; only the explicit
+      // `/api/articles?count=exact` surface may request a full exact count.
+      listArticles({ ...filters, count: "none" }),
       listJurisdictionArticleCounts([], { range: filters.range }),
     ]);
 
@@ -63,7 +65,6 @@ export async function GET(request: Request) {
     ...parsed.data,
     page: parsed.data.page ?? 1,
     pageSize: parsed.data.pageSize ?? 9,
-    count: "exact",
   });
 
   return NextResponse.json(payload, {

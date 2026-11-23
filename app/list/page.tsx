@@ -1,4 +1,5 @@
-import { freshnessAwarePublicCache as unstable_cache } from "@/lib/public-freshness-cache";
+import { unstable_cache as plainUnstableCache } from "next/cache";
+import { freshnessAwarePublicCache } from "@/lib/public-freshness-cache";
 import type { Metadata } from "next";
 import { ChevronRight } from "lucide-react";
 import { ArticleListView } from "@/components/article-list-view";
@@ -24,7 +25,11 @@ export async function generateMetadata({ searchParams }: { searchParams?: Promis
   };
 }
 
-const getListFilterData = unstable_cache(
+// Filter metadata (sources/tags/jurisdiction counts) is not article content and
+// carries no approval state. It must stay on a plain 300s cache even while E2E
+// generation tables exist; otherwise every /list request reruns the full
+// jurisdiction count (measured ~13k D1 rows per cold render).
+const getListFilterData = plainUnstableCache(
   async (range: ArticleListFilters["range"]) => {
     const sources = await listSources();
     const jurisdictions = Array.from(new Set(sources.map((source) => source.jurisdiction)));
@@ -39,13 +44,13 @@ const getListFilterData = unstable_cache(
   { revalidate: 300, tags: [PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG] },
 );
 
-const getListArticles = unstable_cache(
+const getListArticles = freshnessAwarePublicCache(
   async (filters: ArticleListFilters) => listArticles(filters),
   ["list-articles-v2"],
   { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG] },
 );
 
-const getListTopViewedArticles = unstable_cache(
+const getListTopViewedArticles = freshnessAwarePublicCache(
   async (filters: Pick<ArticleListFilters, "range" | "source" | "jurisdiction" | "type" | "language" | "tag">) =>
     listTopViewedArticles(5, filters),
   ["list-top-viewed-v2"],
@@ -91,7 +96,10 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
   const requestedFilters = articleFiltersFromSearchParams(paramsObject);
   const filters = { ...requestedFilters, page: requestedFilters.page ?? 1, pageSize: 10 };
   const countFromJurisdictions = canUseJurisdictionTotal(filters);
-  const articleFilters = { ...filters, count: countFromJurisdictions ? ("none" as const) : ("exact" as const) };
+  // The crawlable archive never asks D1 for a full exact count: even a narrow
+  // filter stays on the bounded fast path and reports a conservative
+  // lower-bound total. Exact counts remain available to explicit API callers.
+  const articleFilters = { ...filters, count: "none" as const };
   const params = paramsFromSearchParams(paramsObject);
 
   const [articleResult, { sources, tags, jurisdictionArticleCounts }, topViewedArticles] = await Promise.all([
