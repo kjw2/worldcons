@@ -23,10 +23,12 @@ export interface D1ReadCost {
   queries: number;
   /** False when at least one result did not expose `meta.rows_read`. */
   rowsReadAvailable: boolean;
+  /** The five most expensive statements in this request. */
+  topReads: Array<{ sql: string; rowsRead: number }>;
 }
 
 export function createD1ReadCost(): D1ReadCost {
-  return { rowsRead: 0, queries: 0, rowsReadAvailable: true };
+  return { rowsRead: 0, queries: 0, rowsReadAvailable: true, topReads: [] };
 }
 
 const ORIGINAL_STATEMENT = Symbol("worldcons.originalD1Statement");
@@ -35,7 +37,7 @@ interface StatementWithOriginal extends D1RuntimePreparedStatement {
   [ORIGINAL_STATEMENT]?: D1RuntimePreparedStatement;
 }
 
-function recordResult(cost: D1ReadCost, result: unknown): void {
+function recordResult(cost: D1ReadCost, result: unknown, sql = "unknown"): void {
   if (!result || typeof result !== "object") return;
   cost.queries += 1;
   const meta = (result as { meta?: unknown }).meta;
@@ -49,20 +51,23 @@ function recordResult(cost: D1ReadCost, result: unknown): void {
     return;
   }
   cost.rowsRead += rowsRead;
+  cost.topReads.push({ sql: sql.slice(0, 140), rowsRead });
+  cost.topReads.sort((left, right) => right.rowsRead - left.rowsRead);
+  if (cost.topReads.length > 5) cost.topReads.length = 5;
 }
 
 function callable(value: unknown): value is (...args: never[]) => unknown {
   return typeof value === "function";
 }
 
-function wrapStatement(statement: D1RuntimePreparedStatement, cost: D1ReadCost): StatementWithOriginal {
+function wrapStatement(statement: D1RuntimePreparedStatement, cost: D1ReadCost, sql = "unknown"): StatementWithOriginal {
   const wrapped: StatementWithOriginal = {
     bind(...values: unknown[]) {
-      return wrapStatement(statement.bind(...values), cost);
+      return wrapStatement(statement.bind(...values), cost, sql);
     },
     all<T = Record<string, unknown>>() {
       return Promise.resolve(statement.all<T>()).then((result) => {
-        recordResult(cost, result);
+        recordResult(cost, result, sql);
         return result;
       });
     },
@@ -70,7 +75,7 @@ function wrapStatement(statement: D1RuntimePreparedStatement, cost: D1ReadCost):
   if (callable(statement.run)) {
     wrapped.run = () =>
       Promise.resolve((statement.run as () => Promise<D1RuntimeResult>)()).then((result) => {
-        recordResult(cost, result);
+        recordResult(cost, result, sql);
         return result;
       });
   }
@@ -88,7 +93,7 @@ export function wrapD1BindingWithReadCost(
 ): D1RuntimeDatabase {
   const wrapped: D1RuntimeDatabase = {
     prepare(query: string) {
-      return wrapStatement(binding.prepare(query), cost);
+      return wrapStatement(binding.prepare(query), cost, query);
     },
   };
   if (callable(binding.batch)) {
@@ -98,7 +103,7 @@ export function wrapD1BindingWithReadCost(
       );
       return Promise.resolve((binding.batch as (items: D1RuntimePreparedStatement[]) => Promise<D1RuntimeResult[]>)(originals))
         .then((results) => {
-          for (const result of results) recordResult(cost, result);
+          for (const result of results) recordResult(cost, result, "batch");
           return results;
         });
     };

@@ -249,6 +249,7 @@ function withPublicReadObservability(
     rowsReadAvailable: cost.rowsReadAvailable,
     durationMs: Date.now() - startedMs,
     edgeCache: cacheStatus,
+    topReads: cost.topReads,
   }));
   return new Response(response.body, {
     status: response.status,
