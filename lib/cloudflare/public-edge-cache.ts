@@ -29,6 +29,17 @@ export const PUBLIC_EDGE_CACHE_STATUS_HEADER = "x-worldcons-edge-cache";
 /** Query keys that do not affect the rendered public list/home document. */
 const UNKEYED_QUERY_PARAMS = new Set(["pageSize", "view", "sort"]);
 
+/**
+ * The only query keys that change the rendered document for each cached path.
+ * Any other parameter (cache busters, tracking tags, crawler probes) is dropped
+ * from the cache key so equivalent documents share one entry. This is safe
+ * because the page readers only consume these known keys.
+ */
+const CACHEABLE_QUERY_KEYS_BY_PATH: Readonly<Record<string, ReadonlySet<string>>> = {
+  "/": new Set<string>(),
+  "/list": new Set(["page", "range", "source", "jurisdiction", "type", "language", "tag", "q"]),
+};
+
 /** Headers that mark a React Server Component/prefetch request. */
 const RSC_HEADERS = ["rsc", "next-router-prefetch", "next-router-state-tree", "x-middleware-prefetch"];
 
@@ -55,8 +66,28 @@ export function normalizedEdgeCacheSearch(search: string): string {
 /** The canonical absolute cache key for an already-validated public request. */
 export function edgeCacheKeyUrl(url: string): string {
   const parsed = new URL(url);
-  const search = normalizedEdgeCacheSearch(parsed.search);
+  const search = normalizedEdgeCacheSearchForPath(parsed.search, parsed.pathname);
   return `${parsed.origin}${parsed.pathname}${search ? `?${search}` : ""}`;
+}
+
+/**
+ * Path-aware normalization. For a cached path with an allowlist, unknown
+ * parameters are dropped entirely so a crawler cannot create unbounded cache
+ * keys. Paths without an allowlist keep the historical behaviour.
+ */
+export function normalizedEdgeCacheSearchForPath(search: string, pathname: string): string {
+  const allowed = CACHEABLE_QUERY_KEYS_BY_PATH[pathname];
+  if (!allowed) return normalizedEdgeCacheSearch(search);
+  const params = new URLSearchParams(search);
+  const kept: Array<[string, string]> = [];
+  for (const [key, value] of params) {
+    if (!allowed.has(key)) continue;
+    kept.push([key, value]);
+  }
+  kept.sort(([leftKey, leftValue], [rightKey, rightValue]) =>
+    leftKey === rightKey ? leftValue.localeCompare(rightValue) : leftKey.localeCompare(rightKey),
+  );
+  return new URLSearchParams(kept).toString();
 }
 
 /**

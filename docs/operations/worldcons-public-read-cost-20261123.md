@@ -150,6 +150,28 @@ the dashboard or with an account-scoped token.
    rollback; the previous code does not read them and dropping them requires a
    table rebuild. Only a reviewed forward migration may remove them.
 
+## 2026-11-24 live incident mitigation
+
+The `/list` surface received roughly 100k crawler requests on 2026-11-23 (about
+one third each `200`, `204` and `504`) while only 14 edge-cache hits were
+recorded: cache-busting query strings and prefetch requests bypassed the cache.
+
+- **Cache key allowlist.** `edgeCacheKeyUrl` now drops every query parameter that
+  is not a real `/list` filter (`page`, `range`, `source`, `jurisdiction`,
+  `type`, `language`, `tag`, `q`) and every parameter on `/`. A crawler rotating
+  `cb`/`utm_*` values therefore shares one entry. Verified live: two different
+  `cb` values on `?page=49` produced `MISS` (20,344 rows) then `HIT` (0 rows,
+  `cf-cache-status=HIT`).
+- **Rate limit scope.** Per-client fixed windows are now enforced for `GET` and
+  `HEAD` on `/`, `/list` and `/search` (60/min for `/list`, 120/min otherwise)
+  plus a per-isolate global budget (1,200/min `/list`, 2,400/min otherwise).
+  Verified live: 65 rapid `/list` requests produced 60×`200` then 5×`429`.
+- **Residual.** A `workers.dev` hostname has no customer zone, so WAF rate
+  limiting and Cache Rules cannot be attached; this Worker-level guard and the
+  Cache API are the available controls until the site moves to a zone with WAF.
+  RSC/prefetch (`204`) traffic still calls origin and is only bounded by the
+  per-client limit.
+
 ## Verification evidence
 
 - `pnpm test:public-cost` (8/8): materialized predicate, index-backed plan,

@@ -39,6 +39,10 @@ test("edge cache keys drop view-only parameters and sort the rest", () => {
   assert.equal(normalizedEdgeCacheSearch("?b=2&pageSize=50&a=1&view=grid&sort=old"), "a=1&b=2");
   assert.equal(normalizedEdgeCacheSearch("?page=3&source=us-scotus&pageSize=10"), "page=3&source=us-scotus");
   assert.equal(edgeCacheKeyUrl("https://worldcons.cclib.workers.dev/list?pageSize=50&page=2&view=grid"), "https://worldcons.cclib.workers.dev/list?page=2");
+  // Cache-busting/tracking parameters must not create new entries for a document.
+  assert.equal(edgeCacheKeyUrl("https://worldcons.cclib.workers.dev/list?cb=123&page=2&utm_source=x"), "https://worldcons.cclib.workers.dev/list?page=2");
+  assert.equal(edgeCacheKeyUrl("https://worldcons.cclib.workers.dev/?cb=123"), "https://worldcons.cclib.workers.dev/");
+  assert.equal(edgeCacheKeyUrl("https://worldcons.cclib.workers.dev/list?q=abc&zzz=1"), "https://worldcons.cclib.workers.dev/list?q=abc");
 });
 
 test("edge cache eligibility fails closed for personalized, admin, RSC and non-HTML requests", () => {
@@ -78,6 +82,11 @@ test("a successful HTML page is cached and served as a HIT; non-HTML is not stor
   assert.equal(second.status, "HIT");
   assert.equal(second.response.headers.get(PUBLIC_EDGE_CACHE_STATUS_HEADER), "HIT");
   assert.equal(renders, 1, "a normalized key must hit the same cached entry");
+
+  // A crawler rotating cache-busting parameters must still share the entry.
+  const busted = await serveWithEdgeCache({ ...options, request: request("https://x.test/list?page=1&cb=rotating-999") });
+  assert.equal(busted.status, "HIT");
+  assert.equal(renders, 1, "unknown query parameters must not bypass the cache");
 
   assert.equal(isEdgeCacheableResponse({ status: 200, headers: { get: () => "application/json" } }), false);
   assert.equal(isEdgeCacheableResponse({ status: 200, headers: { get: (name) => (name === "set-cookie" ? "a=1" : "text/html") } }), false);

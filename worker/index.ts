@@ -177,9 +177,14 @@ const PUBLIC_READ_METERED_PATHS = new Set(["/", "/list", "/search"]);
  * Worker-level fallback when WAF rate limiting is not available on the hostname.
  * 60 origin renders per client IP per minute on the crawl-heavy archive list.
  */
-const PUBLIC_LIST_RATE_LIMIT = 60;
+const PUBLIC_RATE_LIMITS: Readonly<Record<string, { perClient: number; global: number }>> = {
+  "/list": { perClient: 60, global: 1200 },
+  "/": { perClient: 120, global: 2400 },
+  "/search": { perClient: 120, global: 2400 },
+};
 const PUBLIC_LIST_RATE_WINDOW_MS = 60_000;
 const publicRateLimitStore = createPublicRateLimitStore();
+const publicGlobalRateLimitStore = createPublicRateLimitStore();
 
 interface EdgeCacheGlobal {
   caches?: { default?: EdgeCacheStorage };
@@ -197,31 +202,45 @@ function clientAddress(request: Request): string {
 
 function publicListRateLimitResponse(request: Request, env: WorldconsWorkerEnv): Response | null {
   if (env.WORLDCONS_PUBLIC_RATE_LIMIT_DISABLED === "true") return null;
-  if (request.method !== "GET") return null;
+  if (request.method !== "GET" && request.method !== "HEAD") return null;
   let pathname: string;
   try {
     pathname = new URL(request.url).pathname;
   } catch {
     return null;
   }
-  if (pathname !== "/list") return null;
-  if (request.headers.get("authorization") || request.headers.get("cookie")) return null;
+  const limits = PUBLIC_RATE_LIMITS[pathname];
+  if (!limits) return null;
+  if (request.headers.get("authorization")) return null;
   const now = Date.now();
   pruneExpiredRateLimitEntries(publicRateLimitStore, now);
-  const key = publicRateLimitKey(pathname, clientAddress(request));
-  const decision = consumeFixedWindow(
-    publicRateLimitStore.get(key),
-    PUBLIC_LIST_RATE_LIMIT,
+  pruneExpiredRateLimitEntries(publicGlobalRateLimitStore, now);
+  const clientDecision = consumeFixedWindow(
+    publicRateLimitStore.get(publicRateLimitKey(pathname, clientAddress(request))),
+    limits.perClient,
     PUBLIC_LIST_RATE_WINDOW_MS,
     now,
   );
-  publicRateLimitStore.set(key, decision.state);
-  if (decision.allowed) return null;
-  console.log(JSON.stringify({ event: "public_list_rate_limited", pathname, retryAfterSeconds: decision.retryAfterSeconds }));
+  publicRateLimitStore.set(publicRateLimitKey(pathname, clientAddress(request)), clientDecision.state);
+  const globalDecision = consumeFixedWindow(
+    publicGlobalRateLimitStore.get(pathname),
+    limits.global,
+    PUBLIC_LIST_RATE_WINDOW_MS,
+    now,
+  );
+  publicGlobalRateLimitStore.set(pathname, globalDecision.state);
+  if (clientDecision.allowed && globalDecision.allowed) return null;
+  const retryAfterSeconds = Math.max(clientDecision.retryAfterSeconds, globalDecision.retryAfterSeconds);
+  console.log(JSON.stringify({
+    event: "public_rate_limited",
+    pathname,
+    scope: clientDecision.allowed ? "global" : "client",
+    retryAfterSeconds,
+  }));
   return new Response("Too Many Requests", {
     status: 429,
     headers: {
-      "retry-after": String(decision.retryAfterSeconds),
+      "retry-after": String(retryAfterSeconds),
       "cache-control": "no-store",
       "content-type": "text/plain; charset=utf-8",
     },
