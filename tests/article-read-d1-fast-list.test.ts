@@ -1649,3 +1649,237 @@ test("sitemap-scoped JSON1 uses local opt-in without changing ordinary public gu
     else process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = original;
   }
 });
+
+function markLegacyMetadataCurrent(sqlite: DatabaseSync, id: string) {
+  sqlite
+    .prepare(
+      `INSERT INTO legacy_version_freshness_classifications_v4(version_id,article_id,freshness,freshness_basis,evidence,classified_at,classified_by)
+       VALUES(?,?,?,?,?,?,?)
+       ON CONFLICT(version_id) DO UPDATE SET freshness='current'`,
+    )
+    .run(`pub-${id}`, id, "current", "legacy_same_version", "{}", NOW, "test");
+}
+
+function addVerifiedMetadata(sqlite: DatabaseSync, id: string) {
+  sqlite
+    .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+    .run(id, 1, 1, "verified", 0);
+}
+
+test("list-scoped JSON1 guard batching cuts round trips with exact page parity on a 620-case tag surface", async (t) => {
+  const sqlite = createGuardCore();
+  try {
+    const ids: string[] = [];
+    sqlite.exec("BEGIN");
+    try {
+      for (let index = 0; index < 620; index += 1) {
+        const id = `json-list-${String(index).padStart(4, "0")}`;
+        ids.push(id);
+        insertArticle(sqlite, id, {
+          publishedAt: `2026-01-${String((index % 28) + 1).padStart(2, "0")}T00:00:00.000Z`,
+        });
+        markLegacyMetadataCurrent(sqlite, id);
+        addVerifiedMetadata(sqlite, id);
+      }
+      sqlite
+        .prepare("INSERT INTO tags(id,slug,name,normalized_name,type,article_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)")
+        .run("json-list-tag-id", "json-list-tag", "JSON List Tag", "JSON List Tag", "article", ids.length, NOW, NOW);
+      const link = sqlite.prepare("INSERT INTO article_tags(article_id,tag_id,confidence,created_at) VALUES(?,?,?,?)");
+      for (const id of ids) link.run(id, "json-list-tag-id", 0.9, NOW);
+    } finally {
+      sqlite.exec("COMMIT");
+    }
+
+    const run = async (filters: Record<string, unknown>) => {
+      const captured: Captured[] = [];
+      const result = await createD1ArticleReadRepository({ binding: binding(sqlite, captured), maxRows: 10_000, fastList: true })
+        .listArticles({ includeViewCounts: false, ...filters });
+      return { result, captured };
+    };
+
+    const legacyFast = await run({ page: 2, pageSize: 10, count: "none", jsonGuardBatching: false });
+    const jsonFast = await run({ page: 2, pageSize: 10, count: "none", jsonGuardBatching: true });
+    assert.deepEqual(jsonFast.result.items.map((item) => item.slug), legacyFast.result.items.map((item) => item.slug));
+    assert.deepEqual(jsonFast.result.pageInfo, legacyFast.result.pageInfo);
+    assert.equal(jsonGuardReads(jsonFast.captured, "e2e_generation_heads_v1"), 2, "81-row window: one JSON1 batch per overlay pass");
+    assert.equal(legacyGuardReads(legacyFast.captured, "e2e_generation_heads_v1"), 4, "81-row window: two 80-id batches per overlay pass");
+    assert.equal(jsonGuardReads(jsonFast.captured, "search_metadata_repairs_v1"), 2);
+    assert.equal(legacyGuardReads(legacyFast.captured, "search_metadata_repairs_v1"), 4);
+
+    const legacyTag = await run({ tag: "json-list-tag", pageSize: 10, count: "none", jsonGuardBatching: false });
+    const jsonTag = await run({ tag: "json-list-tag", pageSize: 10, count: "none", jsonGuardBatching: true });
+    assert.deepEqual(jsonTag.result.items.map((item) => item.slug), legacyTag.result.items.map((item) => item.slug));
+    assert.deepEqual(jsonTag.result.pageInfo, legacyTag.result.pageInfo);
+    assert.equal(jsonTag.result.items.length, 10);
+    assert.equal(jsonGuardReads(jsonTag.captured, "e2e_generation_heads_v1"), 2 * Math.ceil(620 / JSON_ID_BATCH_SIZE));
+    assert.equal(jsonGuardReads(jsonTag.captured, "search_metadata_repairs_v1"), 2 * Math.ceil(620 / JSON_ID_BATCH_SIZE));
+    assert.equal(legacyGuardReads(legacyTag.captured, "e2e_generation_heads_v1"), 2 * Math.ceil(620 / 80));
+    assert.equal(legacyGuardReads(legacyTag.captured, "search_metadata_repairs_v1"), 2 * Math.ceil(620 / 80));
+    assert.ok(jsonTag.captured.length < legacyTag.captured.length, "tag surface must issue fewer statements with JSON1");
+    t.diagnostic(
+      `local statements fast legacy=${legacyFast.captured.length} json=${jsonFast.captured.length} ` +
+        `tag legacy=${legacyTag.captured.length} json=${jsonTag.captured.length} ` +
+        `guardFast legacyGeneration=${legacyGuardReads(legacyFast.captured, "e2e_generation_heads_v1")} ` +
+        `legacyMetadata=${legacyGuardReads(legacyFast.captured, "search_metadata_repairs_v1")} ` +
+        `jsonGeneration=${jsonGuardReads(jsonFast.captured, "e2e_generation_heads_v1")} ` +
+        `jsonMetadata=${jsonGuardReads(jsonFast.captured, "search_metadata_repairs_v1")}`,
+    );
+
+    const fallbackCaptured: Captured[] = [];
+    const fallback = await createD1ArticleReadRepository({
+      binding: binding(sqlite, fallbackCaptured, { failJsonEach: true }),
+      maxRows: 10_000,
+    }).listArticles({ tag: "json-list-tag", pageSize: 10, count: "none", includeViewCounts: false, jsonGuardBatching: true });
+    assert.deepEqual(fallback.items.map((item) => item.slug), legacyTag.result.items.map((item) => item.slug));
+    assert.deepEqual(fallback.pageInfo, legacyTag.result.pageInfo);
+    assert.ok(fallbackCaptured.some((call) => call.sql.includes("json_each")));
+    assert.ok(fallbackCaptured.some((call) => call.sql.includes("WHERE h.article_id IN (")));
+    assert.ok(fallbackCaptured.some((call) => call.sql.includes("FROM search_metadata_repairs_v1 WHERE article_id IN (")));
+
+    const emptyCaptured: Captured[] = [];
+    const empty = await createD1ArticleReadRepository({ binding: binding(sqlite, emptyCaptured), maxRows: 10_000 })
+      .listArticles({ tag: "json-list-missing", count: "none", jsonGuardBatching: true });
+    assert.deepEqual(empty.items, []);
+    assert.equal(emptyCaptured.length, 1, "an absent tag must stop after one lookup without any guard read");
+    assert.equal(emptyCaptured.filter((call) => call.sql.includes("json_each")).length, 0);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("list JSON1 opt-in stays off outside /list and preserves detail, sitemap and default list guards", async () => {
+  const original = process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+  delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+  const sqlite = createGuardCore();
+  try {
+    insertArticle(sqlite, "scope-case");
+    await insertGeneration(sqlite, "scope-case");
+
+    const detailCaptured: Captured[] = [];
+    const detail = await createD1ArticleReadRepository({ binding: binding(sqlite, detailCaptured), maxRows: 10_000 })
+      .getArticleBySelect("scope-case", "list");
+    assert.equal(detail?.slug, "scope-case");
+    assert.ok(detailCaptured.some((call) => call.sql.includes("WHERE h.article_id IN (")));
+    assert.equal(detailCaptured.filter((call) => call.sql.includes("json_each")).length, 0);
+
+    const defaultListCaptured: Captured[] = [];
+    await createD1ArticleReadRepository({ binding: binding(sqlite, defaultListCaptured), maxRows: 10_000 })
+      .listArticles({ pageSize: 10, count: "none", includeViewCounts: false });
+    assert.ok(defaultListCaptured.some((call) => call.sql.includes("WHERE h.article_id IN (")));
+    assert.equal(defaultListCaptured.filter((call) => call.sql.includes("json_each")).length, 0);
+
+    const sitemapCaptured: Captured[] = [];
+    const sitemap = await createD1ArticleReadRepository({ binding: binding(sqlite, sitemapCaptured), maxRows: 10_000 })
+      .listPublicSitemapArticles();
+    assert.deepEqual(sitemap.map((entry) => entry.slug), ["scope-case"]);
+    assert.equal(sitemapCaptured.filter((call) => call.sql.includes("json_each")).length, 0);
+
+    const optedInCaptured: Captured[] = [];
+    await createD1ArticleReadRepository({ binding: binding(sqlite, optedInCaptured), maxRows: 10_000 })
+      .listArticles({ pageSize: 10, count: "none", includeViewCounts: false, jsonGuardBatching: true });
+    assert.ok(optedInCaptured.some((call) => call.sql.includes("FROM json_each(")));
+
+    process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = "true";
+    const forcedLegacyCaptured: Captured[] = [];
+    await createD1ArticleReadRepository({ binding: binding(sqlite, forcedLegacyCaptured), maxRows: 10_000 })
+      .listArticles({ pageSize: 10, count: "none", includeViewCounts: false, jsonGuardBatching: false });
+    assert.equal(forcedLegacyCaptured.filter((call) => call.sql.includes("json_each")).length, 0,
+      "the /list surface must be able to force the legacy composition even under the global switch");
+  } finally {
+    sqlite.close();
+    if (original === undefined) delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+    else process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = original;
+  }
+});
+
+test("list JSON1 overlay rejects a mid-read metadata CAS change and omits it from a stable tag page", async (t) => {
+  const core = new SqliteD1();
+  t.after(() => core.close());
+  addMetadataTables(core.db);
+  await publish(core, "a");
+  core.db.exec("DELETE FROM e2e_generation_heads_v1");
+  core.db.prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+    .run(articleId, 1, 1, "verified", 0);
+
+  let metadataReads = 0;
+  core.beforeStatement = (sql) => {
+    if (!sql.includes("search_metadata_repairs_v1") || !sql.includes("SELECT")) return;
+    metadataReads += 1;
+    if (metadataReads === 2) {
+      core.beforeStatement = undefined;
+      core.db.prepare("UPDATE search_metadata_repairs_v1 SET fencing_token=fencing_token+1 WHERE article_id=?").run(articleId);
+    }
+  };
+  const strict = createD1ArticleReadRepository({ binding: core, maxRows: 10_000 });
+  await assert.rejects(
+    () => strict.listArticles({ pageSize: 10, count: "none", includeViewCounts: false, jsonGuardBatching: true }),
+    /e2e\.public_metadata_changed/,
+    "the ordinary /list surface keeps strict rejection under JSON1 batching",
+  );
+
+  const tagCore = new SqliteD1();
+  t.after(() => tagCore.close());
+  addMetadataTables(tagCore.db);
+  await publish(tagCore, "a");
+  insertArticle(tagCore.db, "cas-stable");
+  tagCore.db.exec("DELETE FROM e2e_generation_heads_v1");
+  tagCore.db.prepare("INSERT INTO tags(id,slug,name,normalized_name,type,article_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)")
+    .run("cas-tag-id", "cas-tag", "CAS Tag", "CAS Tag", "article", 2, NOW, NOW);
+  for (const id of [articleId, "cas-stable"]) {
+    tagCore.db.prepare("INSERT INTO article_tags(article_id,tag_id,confidence,created_at) VALUES(?,?,?,?)").run(id, "cas-tag-id", 0.9, NOW);
+  }
+  tagCore.db.prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+    .run(articleId, 1, 1, "verified", 0);
+  let tagReads = 0;
+  tagCore.beforeStatement = (sql) => {
+    if (!sql.includes("search_metadata_repairs_v1") || !sql.includes("SELECT")) return;
+    tagReads += 1;
+    if (tagReads === 2) {
+      tagCore.beforeStatement = undefined;
+      tagCore.db.prepare("UPDATE search_metadata_repairs_v1 SET fencing_token=fencing_token+1 WHERE article_id=?").run(articleId);
+    }
+  };
+  const tagRepository = createD1ArticleReadRepository({ binding: tagCore, maxRows: 10_000 });
+  const stable = await tagRepository.listArticles({
+    tag: "cas-tag",
+    pageSize: 10,
+    count: "exact",
+    includeViewCounts: false,
+    withholdUnverifiedMetadata: true,
+    stablePageBoundaries: true,
+    jsonGuardBatching: true,
+  });
+  assert.deepEqual(stable.items.map((item) => item.slug), ["cas-stable"]);
+  assert.equal(stable.pageInfo.total, 2, "the stable candidate total must not change when one approval is in flight");
+  assert.equal(stable.pageInfo.hasMore, false);
+});
+
+test("list JSON1 overlay drops a row withdrawn during the first guard pass", async (t) => {
+  const core = new SqliteD1();
+  t.after(() => core.close());
+  addMetadataTables(core.db);
+  await publish(core, "a");
+  core.db.exec("DELETE FROM e2e_generation_heads_v1");
+  core.db.prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+    .run(articleId, 1, 1, "verified", 0);
+  let reads = 0;
+  let withdrawnDuringRead = false;
+  core.beforeStatement = (sql) => {
+    if (!sql.includes("search_metadata_repairs_v1") || !sql.includes("SELECT")) return;
+    reads += 1;
+    if (reads === 1) {
+      withdrawnDuringRead = true;
+      core.beforeStatement = undefined;
+      core.db.exec("UPDATE article_publications_p3 SET state='withdrawn'");
+    }
+  };
+  const repository = createD1ArticleReadRepository({ binding: core, maxRows: 10_000 });
+  const result = await repository.listArticles({
+    pageSize: 10,
+    count: "none",
+    includeViewCounts: false,
+    jsonGuardBatching: true,
+  });
+  assert.equal(withdrawnDuringRead, true, "the withdrawal race must fire during the first guard pass");
+  assert.deepEqual(result.items, [], "a withdrawn publication must never survive the two-pass overlay");
+});

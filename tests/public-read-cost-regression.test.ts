@@ -301,6 +301,11 @@ test("the crawlable /list surface never requests a full exact count and keeps fi
   assert.match(listPage, /getListFilterData = plainUnstableCache\(/);
   assert.match(listPage, /getListArticles = freshnessAwarePublicCache\(/);
   assert.match(listPage, /count: "none" as const/);
+  assert.match(
+    listPage,
+    /jsonGuardBatching: process\.env\.WORLDCONS_LIST_JSON_GUARD_BATCHING_ENABLED === "true"/,
+    "the JSON1 guard opt-in must stay scoped to the /list surface and default off",
+  );
   assert.doesNotMatch(listPage, /count: countFromJurisdictions \? "none" : "exact"/);
   const homeRange = readFileSync(new URL("../app/api/home/range/route.ts", import.meta.url), "utf8");
   assert.doesNotMatch(homeRange, /count: "exact"/);

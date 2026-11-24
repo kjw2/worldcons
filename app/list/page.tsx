@@ -100,7 +100,13 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
   // The crawlable archive never asks D1 for a full exact count: even a narrow
   // filter stays on the bounded fast path and reports a conservative
   // lower-bound total. Exact counts remain available to explicit API callers.
-  const articleFilters = { ...filters, count: "none" as const };
+  // The guard-batching switch is scoped to this surface only; every other
+  // list caller keeps the existing global guard policy.
+  const articleFilters = {
+    ...filters,
+    count: "none" as const,
+    jsonGuardBatching: process.env.WORLDCONS_LIST_JSON_GUARD_BATCHING_ENABLED === "true",
+  };
   const params = paramsFromSearchParams(paramsObject);
 
   const [articleResult, { sources, tags, jurisdictionArticleCounts }, topViewedArticles] = await runWithRequestLocalTagCandidates(() =>

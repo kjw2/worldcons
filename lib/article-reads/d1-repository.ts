@@ -810,7 +810,9 @@ export function createD1ArticleReadRepository(
     }
     if (rows.length > maxRows) return null;
 
-    const approved = await overlayPublicGenerationRows(binding, rows);
+    const approved = await overlayPublicGenerationRows(binding, rows, {
+      jsonBatching: filters.jsonGuardBatching,
+    });
     approved.sort(compareListRows);
 
     if (approved.length < relativeFrom + pageSize && rows.length >= windowSize) return null;
@@ -957,13 +959,18 @@ export function createD1ArticleReadRepository(
       matched = await overlayPublicGenerationRows(
         binding,
         matched.slice(from, from + pageSize),
-        { metadataPolicy: "omit-unverified" },
+        { metadataPolicy: "omit-unverified", jsonBatching: filters.jsonGuardBatching },
       );
     } else if (!filters.includeUnpublished) {
       matched = await overlayPublicGenerationRows(
         binding,
         matched,
-        filters.withholdUnverifiedMetadata ? { metadataPolicy: "omit-unverified" } : {},
+        {
+          ...(filters.withholdUnverifiedMetadata ? { metadataPolicy: "omit-unverified" as const } : {}),
+          // Undefined keeps the existing global policy for every non-/list
+          // caller; only the crawlable list explicitly opts in.
+          jsonBatching: filters.jsonGuardBatching,
+        },
       );
     }
     matched.sort(compareListRows);

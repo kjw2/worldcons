@@ -151,6 +151,13 @@ export interface ArticleListFilters {
   withholdUnverifiedMetadata?: boolean;
   /** Tag-detail HTML only: slice the stable published candidate order before approval-state withholding. */
   stablePageBoundaries?: boolean;
+  /**
+   * Public `/list` HTML only: opt into bounded JSON1 id batching for the
+   * two-pass generation/metadata overlay. Explicit false forces the legacy
+   * 80-id composition; absent keeps the existing global guard policy for
+   * every other list caller (home, search, APIs, tag detail).
+   */
+  jsonGuardBatching?: boolean;
   includeViewCounts?: boolean;
   page?: number;
   pageSize?: number;
