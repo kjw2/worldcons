@@ -9,6 +9,7 @@ import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listJurisdictionArticleCounts, listSources, listTags, listTopViewedArticles, publicArticleListCountMode } from "@/lib/db/queries";
+import { runWithRequestLocalTagCandidates } from "@/lib/cloudflare/d1/request-local-tag-cache";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { publicListPaginationMetadata } from "@/lib/seo/list-pagination";
@@ -102,18 +103,20 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
   const articleFilters = { ...filters, count: "none" as const };
   const params = paramsFromSearchParams(paramsObject);
 
-  const [articleResult, { sources, tags, jurisdictionArticleCounts }, topViewedArticles] = await Promise.all([
-    getListArticles(articleFilters),
-    getListFilterData(filters.range),
-    getListTopViewedArticles({
-      range: filters.range,
-      source: filters.source,
-      jurisdiction: filters.jurisdiction,
-      type: filters.type,
-      language: filters.language,
-      tag: filters.tag,
-    }),
-  ]);
+  const [articleResult, { sources, tags, jurisdictionArticleCounts }, topViewedArticles] = await runWithRequestLocalTagCandidates(() =>
+    Promise.all([
+      getListArticles(articleFilters),
+      getListFilterData(filters.range),
+      getListTopViewedArticles({
+        range: filters.range,
+        source: filters.source,
+        jurisdiction: filters.jurisdiction,
+        type: filters.type,
+        language: filters.language,
+        tag: filters.tag,
+      }),
+    ]),
+  );
   const articles = countFromJurisdictions ? withJurisdictionTotal(articleResult, jurisdictionArticleCounts, filters) : articleResult;
   const paramsString = params.toString();
 

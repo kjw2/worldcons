@@ -4,6 +4,7 @@ import test from "node:test";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { createD1ArticleReadRepository } from "../lib/article-reads/d1-repository";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
+import { runWithRequestLocalTagCandidates } from "../lib/cloudflare/d1/request-local-tag-cache";
 import { createD1ReadCost, wrapD1BindingWithReadCost } from "../lib/cloudflare/d1/read-cost";
 import { createD1ReferenceReadRepository } from "../lib/reference-reads/d1-repository";
 
@@ -111,6 +112,28 @@ function seed(sqlite: DatabaseSync, count = 600) {
       null,
     );
     insertPublication.run(`publication-${index}`, id, "published", `version-${index}`, "1", "system", "fixture", publishedAt, publishedAt);
+  }
+}
+
+function tagLookupCount(captured: Captured[]): number {
+  return captured.filter((entry) => entry.sql.includes("select id from tags where slug = ? or name = ?")).length;
+}
+
+function tagArticleIdLookupCount(captured: Captured[]): number {
+  return captured.filter((entry) => entry.sql.includes("from article_tags where tag_id in")).length;
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function seedTag(sqlite: DatabaseSync, articleIndexes: number[]) {
+  sqlite
+    .prepare("INSERT INTO tags(id,slug,name,normalized_name,type,article_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)")
+    .run("tag-1", "first-amendment", "First Amendment", "First Amendment", "article", articleIndexes.length, nowIso(), nowIso());
+  const insert = sqlite.prepare("INSERT INTO article_tags(article_id,tag_id,confidence,created_at) VALUES(?,?,?,?)");
+  for (const index of articleIndexes) {
+    insert.run(`00000000-0000-4000-a000-${String(index).padStart(12, "0")}`, "tag-1", 0.9, nowIso());
   }
 }
 
@@ -303,6 +326,129 @@ test("tag-filter resolution uses one bounded tags lookup instead of slug+name sc
   assert.equal(captured.length, 1, "an absent tag must stop after one lookup");
   assert.match(captured[0].sql, /select id from tags where slug = \? or name = \? order by id limit \?/);
   assert.deepEqual(captured[0].params, ["missing-tag", "missing-tag", 10_001]);
+});
+
+test("simultaneous list and popular tag reads share one request-local candidate lookup", async () => {
+  const sqlite = createCore();
+  try {
+    seed(sqlite, 12);
+    seedTag(sqlite, [0, 1, 2, 3, 4, 5, 6, 7]);
+    const captured: Captured[] = [];
+    const repository = createD1ArticleReadRepository({
+      binding: binding(sqlite, captured),
+      fastList: true,
+      maxRows: 10_000,
+    });
+
+    const [listed, popular] = await runWithRequestLocalTagCandidates(() =>
+      Promise.all([
+        repository.listArticles({ tag: "first-amendment", pageSize: 10, count: "none" }),
+        repository.listTopViewedArticles(5, { tag: "first-amendment" }),
+      ]),
+    );
+
+    assert.equal(listed.items.length, 8);
+    assert.deepEqual(popular.map((item) => item.slug), listed.items.slice(0, 5).map((item) => item.slug));
+    assert.equal(tagLookupCount(captured), 1, "the tag alias must be resolved once per request");
+    assert.equal(tagArticleIdLookupCount(captured), 1, "the tag article ids must be read once per request");
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("scoped tag candidates use name aliases, cache empty results, and clean up rejections", async () => {
+  const sqlite = createCore();
+  try {
+    seed(sqlite, 12);
+    seedTag(sqlite, [0, 1, 2, 3, 4, 5]);
+    const captured: Captured[] = [];
+    const repository = createD1ArticleReadRepository({
+      binding: binding(sqlite, captured),
+      fastList: true,
+      maxRows: 10_000,
+    });
+
+    const [aliasList, aliasPopular] = await runWithRequestLocalTagCandidates(() =>
+      Promise.all([
+        repository.listArticles({ tag: "First Amendment", pageSize: 10, count: "none" }),
+        repository.listTopViewedArticles(5, { tag: "First Amendment" }),
+      ]),
+    );
+    assert.equal(aliasList.items.length, 6);
+    assert.deepEqual(aliasPopular.map((item) => item.slug), aliasList.items.slice(0, 5).map((item) => item.slug));
+    assert.equal(tagLookupCount(captured), 1);
+    assert.equal(tagArticleIdLookupCount(captured), 1);
+
+    captured.length = 0;
+    const [emptyList, emptyPopular] = await runWithRequestLocalTagCandidates(() =>
+      Promise.all([
+        repository.listArticles({ tag: "missing-tag", pageSize: 10, count: "none" }),
+        repository.listTopViewedArticles(5, { tag: "missing-tag" }),
+      ]),
+    );
+    assert.deepEqual(emptyList.items, []);
+    assert.deepEqual(emptyPopular, []);
+    assert.equal(tagLookupCount(captured), 1, "an empty tag result must still be cached within the scope");
+    assert.equal(tagArticleIdLookupCount(captured), 0);
+
+    const base = binding(sqlite);
+    let tagAttempts = 0;
+    const flaky = {
+      prepare(sql: string): D1RuntimePreparedStatement {
+        if (sql.includes("select id from tags where slug = ? or name = ?")) {
+          tagAttempts += 1;
+          if (tagAttempts === 1) {
+            return {
+              bind() {
+                return this;
+              },
+              async all() {
+                throw new Error("transient_tag_lookup");
+              },
+            };
+          }
+        }
+        return base.prepare(sql);
+      },
+    } as D1RuntimeDatabase;
+    const retrying = createD1ArticleReadRepository({ binding: flaky, fastList: true, maxRows: 10_000 });
+    await runWithRequestLocalTagCandidates(async () => {
+      await assert.rejects(retrying.listArticles({ tag: "first-amendment", count: "none" }), /transient_tag_lookup/);
+      const recovered = await retrying.listArticles({ tag: "first-amendment", count: "none" });
+      assert.equal(recovered.items.length, 6, "a rejected lookup must not poison the rest of the request");
+    });
+    assert.equal(tagAttempts, 2, "the failed promise must be removed so the next read retries");
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("tag candidate reuse never crosses request scopes or runs without a scope", async () => {
+  const sqlite = createCore();
+  try {
+    seed(sqlite, 12);
+    seedTag(sqlite, [0, 1, 2, 3, 4, 5]);
+    const captured: Captured[] = [];
+    const repository = createD1ArticleReadRepository({
+      binding: binding(sqlite, captured),
+      fastList: true,
+      maxRows: 10_000,
+    });
+
+    await repository.listArticles({ tag: "first-amendment", count: "none" });
+    await repository.listArticles({ tag: "first-amendment", count: "none" });
+    assert.equal(tagLookupCount(captured), 2, "no implicit global cache may exist outside a request scope");
+
+    captured.length = 0;
+    await Promise.all([
+      runWithRequestLocalTagCandidates(() => repository.listArticles({ tag: "first-amendment", count: "none" })),
+      runWithRequestLocalTagCandidates(() => repository.listArticles({ tag: "first-amendment", count: "none" })),
+    ]);
+    assert.equal(tagLookupCount(captured), 2, "independent request scopes must not share tag candidates");
+    assert.equal(tagArticleIdLookupCount(captured), 2);
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("jurisdiction counts use the materialized publishable predicate with JSON parity", async () => {

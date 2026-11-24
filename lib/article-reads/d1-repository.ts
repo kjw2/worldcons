@@ -7,6 +7,7 @@ import {
   type D1RuntimeReadPredicate,
 } from "@/lib/cloudflare/d1/runtime-read";
 import { getRuntimeD1Binding, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
+import { memoizeRequestLocalTagCandidates } from "@/lib/cloudflare/d1/request-local-tag-cache";
 import { d1Schema } from "@/lib/cloudflare/d1/schema";
 import type { D1TableDefinition } from "@/lib/cloudflare/d1/types";
 import {
@@ -619,6 +620,20 @@ export function createD1ArticleReadRepository(
   }
 
   /**
+   * Pure tag membership (slug/name alias plus its article ids) for one request
+   * scope. The result is independent of publishability, pagination and filters,
+   * so a same-request list + popular-list pair shares one lookup without
+   * changing visibility semantics.
+   */
+  async function tagCandidateArticleIds(binding: D1RuntimeDatabase, tag: string): Promise<string[]> {
+    return memoizeRequestLocalTagCandidates(binding, tag, async () => {
+      const tagIds = await tagIdsForTag(binding, tag);
+      if (tagIds.length === 0) return [];
+      return articleIdsForTagIds(binding, tagIds);
+    });
+  }
+
+  /**
    * Whether the bounded SQL fast path may serve this request. It only handles the
    * common public shapes - unfiltered or source/jurisdiction/type/language/range
    * - for the first (bounded) pages, and only when no tag/ids/includeUnpublished
@@ -840,9 +855,7 @@ export function createD1ArticleReadRepository(
 
     let taggedArticleIds: string[] | null = null;
     if (filters.tag) {
-      const tagIds = await tagIdsForTag(binding, filters.tag);
-      if (tagIds.length === 0) return empty();
-      taggedArticleIds = await articleIdsForTagIds(binding, tagIds);
+      taggedArticleIds = await tagCandidateArticleIds(binding, filters.tag);
       if (taggedArticleIds.length === 0) return empty();
     }
 
