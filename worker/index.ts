@@ -7,8 +7,10 @@ import { setRuntimePlatform } from "@/lib/runtime/platform";
 import { setRuntimeAuthEnvironment } from "@/lib/runtime/auth-environment";
 import { createWaitUntilBackgroundScheduler, setRuntimeBackgroundScheduler } from "@/lib/runtime/background";
 import {
+  runWithRuntimeD1Bindings,
   setRuntimeD1Bindings,
   setRuntimeSearchVectorBinding,
+  type D1RuntimeBindings,
   type D1RuntimeDatabase,
 } from "@/lib/cloudflare/d1/runtime-binding";
 import { resolveD1ShadowConfig, setRuntimeD1ShadowConfig } from "@/lib/cloudflare/d1/shadow/config";
@@ -306,14 +308,18 @@ export default {
     });
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
     setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW);
-    setRuntimeD1Bindings({
+    // Capture this request's wrapped binding set before any await. The handler
+    // below runs inside the request-local scope so concurrent renders cannot
+    // move this request's D1 `rows_read` accounting to another request.
+    const d1Bindings: D1RuntimeBindings = {
       worldcons_core: env.WORLDCONS_CORE
         ? wrapD1BindingWithReadCost(env.WORLDCONS_CORE, readCost)
-        : env.WORLDCONS_CORE,
-      worldcons_ingest: env.WORLDCONS_INGEST,
-      worldcons_ops: env.WORLDCONS_OPS,
-      worldcons_search: env.WORLDCONS_SEARCH,
-    });
+        : null,
+      worldcons_ingest: env.WORLDCONS_INGEST ?? null,
+      worldcons_ops: env.WORLDCONS_OPS ?? null,
+      worldcons_search: env.WORLDCONS_SEARCH ?? null,
+    };
+    setRuntimeD1Bindings(d1Bindings);
     setRuntimeWorldconsSearchServiceEnv(env);
     setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
     setRuntimeRateLimitDurableObjectBinding(env.WORLDCONS_RATE_LIMIT);
@@ -360,7 +366,10 @@ export default {
         request,
         env,
         cache: edgeCacheStorage(),
-        fetchOrigin: (canonicalRequest) => Promise.resolve(handler.fetch(canonicalRequest, env, ctx)),
+        fetchOrigin: (canonicalRequest) =>
+          runWithRuntimeD1Bindings(d1Bindings, () =>
+            Promise.resolve(handler.fetch(canonicalRequest, env, ctx)),
+          ),
         waitUntil: (promise) => ctx.waitUntil(promise),
       });
       return withPublicReadObservability(guarded.response, pathname, readCost, startedMs, guarded.status);
@@ -370,7 +379,10 @@ export default {
     const edge = await serveWithEdgeCache({
       request,
       cache: edgeCacheStorage(),
-      fetchOrigin: () => Promise.resolve(handler.fetch(request, env, ctx)),
+      fetchOrigin: () =>
+        runWithRuntimeD1Bindings(d1Bindings, () =>
+          Promise.resolve(handler.fetch(request, env, ctx)),
+        ),
       waitUntil: (promise) => ctx.waitUntil(promise),
     });
     return withPublicReadObservability(edge.response, pathname, readCost, startedMs, edge.status);

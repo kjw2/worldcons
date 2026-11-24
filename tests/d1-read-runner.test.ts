@@ -3,6 +3,13 @@ import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { D1RuntimeReadError, buildD1RuntimeReadStatement, runD1RuntimeRead } from "../lib/cloudflare/d1/runtime-read";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
+import {
+  clearRuntimeD1Bindings,
+  getRuntimeD1Binding,
+  runWithRuntimeD1Bindings,
+  setRuntimeD1Bindings,
+} from "../lib/cloudflare/d1/runtime-binding";
+import { createD1ReadCost, wrapD1BindingWithReadCost } from "../lib/cloudflare/d1/read-cost";
 import { d1Schema } from "../lib/cloudflare/d1/schema";
 import {
   createD1ReferenceReadRepository,
@@ -603,4 +610,57 @@ test("D1 listJurisdictionArticleCounts truncates overflow and applies the range 
   });
   assert.match(ranged.calls[0].sql.toLowerCase(), /a\.status='summarized'[\s\S]*a\.original_published_at>=\?/);
   assert.equal(typeof ranged.calls[0].params[0], "string");
+});
+
+test("request-local D1 bindings keep concurrent read-cost telemetry isolated", async () => {
+  clearRuntimeD1Bindings();
+  const makeDb = (rowsRead: number) =>
+    ({
+      prepare(query: string) {
+        return {
+          bind() {
+            return this;
+          },
+          async all() {
+            return { success: true, results: [], meta: { rows_read: rowsRead }, sql: query };
+          },
+        };
+      },
+    }) as unknown as D1RuntimeDatabase;
+
+  const costA = createD1ReadCost();
+  const costB = createD1ReadCost();
+  const dbA = wrapD1BindingWithReadCost(makeDb(5), costA);
+  const dbB = wrapD1BindingWithReadCost(makeDb(7), costB);
+
+  setRuntimeD1Bindings({ worldcons_core: dbA });
+  try {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const scopedA = runWithRuntimeD1Bindings({ worldcons_core: dbA }, async () => {
+      await gate;
+      const binding = getRuntimeD1Binding("worldcons_core");
+      assert.equal(binding, dbA, "a scope must ignore a global binding written by another request");
+      await binding!.prepare("select a").bind().all();
+    });
+    const scopedB = runWithRuntimeD1Bindings({ worldcons_core: dbB }, async () => {
+      setRuntimeD1Bindings({ worldcons_core: dbB });
+      const binding = getRuntimeD1Binding("worldcons_core");
+      assert.equal(binding, dbB);
+      await binding!.prepare("select b").bind().all();
+    });
+
+    await scopedB;
+    release();
+    await scopedA;
+
+    assert.equal(costA.rowsRead, 5, "the leader request keeps its own rows");
+    assert.equal(costB.rowsRead, 7, "the concurrent request keeps its own rows");
+    assert.equal(getRuntimeD1Binding("worldcons_core"), dbA, "the global fallback is unchanged by a scoped request");
+  } finally {
+    clearRuntimeD1Bindings();
+  }
 });
