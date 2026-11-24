@@ -94,6 +94,7 @@ import {
   publicRateLimitKey,
 } from "@/lib/cloudflare/public-rate-limit";
 import { edgeCacheKeyUrl } from "@/lib/cloudflare/public-edge-cache";
+import { guardPublicListRequest, type RateLimitBinding } from "@/lib/cloudflare/public-list-guard";
 
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
@@ -113,6 +114,9 @@ interface WorldconsWorkerEnv {
   WORLDCONS_SEARCH?: D1RuntimeDatabase;
   WORLDCONS_SEARCH_VECTOR?: VectorizeIndexBinding;
   WORLDCONS_RATE_LIMIT?: DurableObjectNamespaceLike;
+  WORLDCONS_LIST_MISS_LIMITER?: RateLimitBinding;
+  WORLDCONS_LIST_IP_LIMITER?: RateLimitBinding;
+  WORLDCONS_PUBLIC_RATE_LIMIT_DISABLED?: string;
   ENVIRONMENT?: string;
   PUBLIC_BASE_URL?: string;
   PUBLIC_SITE_BASE_URL?: string;
@@ -174,11 +178,10 @@ const OPS_WRITE_BOUNDARY_PATHS = new Set([
 const PUBLIC_READ_METERED_PATHS = new Set(["/", "/list", "/search"]);
 
 /**
- * Worker-level fallback when WAF rate limiting is not available on the hostname.
- * 60 origin renders per client IP per minute on the crawl-heavy archive list.
+ * In-isolate fallback for the other public read surfaces. `/list` is guarded by
+ * the official Cloudflare rate-limit bindings in `guardPublicListRequest`.
  */
 const PUBLIC_RATE_LIMITS: Readonly<Record<string, { perClient: number; global: number }>> = {
-  "/list": { perClient: 60, global: 1200 },
   "/": { perClient: 120, global: 2400 },
   "/search": { perClient: 120, global: 2400 },
 };
@@ -202,7 +205,6 @@ function clientAddress(request: Request): string {
 
 function publicListRateLimitResponse(request: Request, env: WorldconsWorkerEnv): Response | null {
   if (env.WORLDCONS_PUBLIC_RATE_LIMIT_DISABLED === "true") return null;
-  if (request.method !== "GET" && request.method !== "HEAD") return null;
   let pathname: string;
   try {
     pathname = new URL(request.url).pathname;
@@ -211,7 +213,8 @@ function publicListRateLimitResponse(request: Request, env: WorldconsWorkerEnv):
   }
   const limits = PUBLIC_RATE_LIMITS[pathname];
   if (!limits) return null;
-  if (request.headers.get("authorization")) return null;
+  // Client headers and method never bypass the budget: an authenticated or
+  // non-GET request still reaches the same per-client and global counters.
   const now = Date.now();
   pruneExpiredRateLimitEntries(publicRateLimitStore, now);
   pruneExpiredRateLimitEntries(publicGlobalRateLimitStore, now);
@@ -344,14 +347,24 @@ export default {
         authorityEnv as unknown as WorldconsOpsWriteWorkerEnv,
       );
     }
-    const limited = publicListRateLimitResponse(request, env);
-    if (limited) return limited;
     let pathname = "";
     try {
       pathname = new URL(request.url).pathname;
     } catch {
       // A malformed URL is left to the handler's own error path.
     }
+    if (pathname === "/list") {
+      const guarded = await guardPublicListRequest({
+        request,
+        env,
+        cache: edgeCacheStorage(),
+        fetchOrigin: (canonicalRequest) => Promise.resolve(handler.fetch(canonicalRequest, env, ctx)),
+        waitUntil: (promise) => ctx.waitUntil(promise),
+      });
+      return withPublicReadObservability(guarded.response, pathname, readCost, startedMs, guarded.status);
+    }
+    const limited = publicListRateLimitResponse(request, env);
+    if (limited) return limited;
     const edge = await serveWithEdgeCache({
       request,
       cache: edgeCacheStorage(),

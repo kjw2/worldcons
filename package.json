@@ -72,7 +72,7 @@
     "test:ops": "tsx --test tests/ops-summary-backlog.test.ts tests/workflow-heartbeat.test.ts tests/source-health.test.ts",
     "test:embeddings": "tsx --test tests/embedding-backlog-d1.test.ts tests/embedding-provider.test.ts tests/embedding-vector.test.ts",
     "test:public-regression": "tsx --test tests/homepage-regression.test.ts tests/public-design-slop.test.ts tests/seo-public-surface.test.ts",
-    "test:public-cost": "tsx --test tests/public-read-cost-regression.test.ts tests/public-edge-cache.test.ts",
+    "test:public-cost": "tsx --test tests/public-read-cost-regression.test.ts tests/public-edge-cache.test.ts tests/public-list-guard.test.ts",
     "test:seo-sitemap-probe": "tsx --test tests/seo-sitemap-probe.test.ts",
     "test:reference-reads": "tsx --test tests/reference-reads-repository.test.ts",
     "test:article-reads": "tsx --test tests/article-reads-repository.test.ts",
