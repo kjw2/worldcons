@@ -428,6 +428,99 @@ test("scoped tag candidates use name aliases, cache empty results, and clean up 
   }
 });
 
+test("tag pagination preflight uses the raw slug/name membership upper bound", async () => {
+  const sqlite = createCore();
+  try {
+    seed(sqlite, 12);
+    seedTag(sqlite, [0, 1, 2, 3, 4, 5]);
+    const captured: Captured[] = [];
+    const repository = createD1ArticleReadRepository({
+      binding: binding(sqlite, captured),
+      fastList: true,
+      maxRows: 10_000,
+    });
+    const probe = repository.tagHasMembershipAtOffset;
+    assert.equal(typeof probe, "function");
+
+    sqlite
+      .prepare("INSERT INTO tags(id,slug,name,normalized_name,type,article_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)")
+      .run("tag-empty", "empty-tag", "Empty Tag", "Empty Tag", "article", 0, "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
+
+    assert.equal(await probe!("first-amendment", 5), true, "the last raw member is still in range");
+    assert.equal(await probe!("first-amendment", 6), false, "offset == raw membership is out of range");
+    assert.equal(await probe!("First Amendment", 5), true, "the name alias must share the slug union");
+    assert.equal(await probe!("missing-tag", 0), false, "a missing tag has an empty membership bound");
+    assert.equal(await probe!("empty-tag", 0), false, "an existing tag with zero members has an empty bound");
+    assert.ok(
+      !captured.some((entry) => entry.sql.includes("from articles where")),
+      "the upper-bound probe must not read the article corpus",
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("tag pagination preflight bounds deep offsets with one indexed membership probe", async () => {
+  const sqlite = createCore();
+  try {
+    seed(sqlite, 12);
+    seedTag(sqlite, [0, 1, 2, 3, 4, 5]);
+    const captured: Captured[] = [];
+    const repository = createD1ArticleReadRepository({
+      binding: binding(sqlite, captured),
+      fastList: true,
+      maxRows: 4,
+    });
+
+    assert.equal(await repository.tagHasMembershipAtOffset!("first-amendment", 5), true);
+    const deepRead = captured.find((entry) => entry.sql.includes("from article_tags where tag_id in"));
+    assert.ok(deepRead, "deep offsets must use one bounded membership probe");
+    assert.match(deepRead.sql, /limit 1 offset \?$/);
+    assert.deepEqual(deepRead.params.slice(-1), [5]);
+
+    captured.length = 0;
+    assert.equal(await repository.tagHasMembershipAtOffset!("first-amendment", 6), false);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("empty list pages never report the requested offset as a lower-bound total", async () => {
+  const sqlite = createCore();
+  try {
+    seed(sqlite, 12);
+    seedTag(sqlite, [0, 1, 2, 3, 4, 5]);
+    const repository = createD1ArticleReadRepository({
+      binding: binding(sqlite),
+      fastList: true,
+      maxRows: 10_000,
+    });
+
+    const tagged = await repository.listArticles({
+      tag: "first-amendment",
+      page: 5,
+      pageSize: 10,
+      count: "none",
+      includeViewCounts: false,
+    });
+    assert.deepEqual(tagged.items, []);
+    assert.equal(tagged.pageInfo.total, 0, "an empty tag page must not claim 40 rows");
+    assert.equal(tagged.pageInfo.hasMore, false);
+
+    const unfiltered = await repository.listArticles({
+      page: 5,
+      pageSize: 10,
+      count: "none",
+      includeViewCounts: false,
+    });
+    assert.deepEqual(unfiltered.items, []);
+    assert.equal(unfiltered.pageInfo.total, 0, "an empty fast-path page must not claim 40 rows");
+    assert.equal(unfiltered.pageInfo.hasMore, false);
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("tag candidate reuse never crosses request scopes or runs without a scope", async () => {
   const sqlite = createCore();
   try {

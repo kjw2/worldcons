@@ -1,6 +1,7 @@
 import { unstable_cache as plainUnstableCache } from "next/cache";
 import { freshnessAwarePublicCache } from "@/lib/public-freshness-cache";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { ArticleListView } from "@/components/article-list-view";
 import { FilterBar } from "@/components/filter-bar";
@@ -8,7 +9,7 @@ import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
-import { listArticles, listJurisdictionArticleCounts, listSources, listTags, listTopViewedArticles, publicArticleListCountMode } from "@/lib/db/queries";
+import { listArticles, listJurisdictionArticleCounts, listSources, listTags, listTopViewedArticles, publicArticleListCountMode, tagHasMembershipAtOffset } from "@/lib/db/queries";
 import { runWithRequestLocalTagCandidates } from "@/lib/cloudflare/d1/request-local-tag-cache";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
@@ -69,14 +70,16 @@ function withJurisdictionTotal(articles: ArticleListResult, jurisdictionArticleC
       ? jurisdictionArticleCounts[filters.jurisdiction] ?? 0
       : Object.values(jurisdictionArticleCounts).reduce((sum, count) => sum + count, 0),
   );
-  const shownThrough = (articles.pageInfo.page - 1) * articles.pageInfo.pageSize + articles.items.length;
+  const shownThrough = articles.items.length === 0
+    ? 0
+    : (articles.pageInfo.page - 1) * articles.pageInfo.pageSize + articles.items.length;
 
   return {
     ...articles,
     pageInfo: {
       ...articles.pageInfo,
       total: Math.max(total, shownThrough),
-      hasMore: shownThrough < total,
+      hasMore: articles.items.length > 0 && shownThrough < total,
       totalIsExact: true,
     },
   };
@@ -109,8 +112,22 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
   };
   const params = paramsFromSearchParams(paramsObject);
 
-  const [articleResult, { sources, tags, jurisdictionArticleCounts }, topViewedArticles] = await runWithRequestLocalTagCandidates(() =>
-    Promise.all([
+  const [articleResult, { sources, tags, jurisdictionArticleCounts }, topViewedArticles] = await runWithRequestLocalTagCandidates(async () => {
+    // Crawlable tag pagination is bounded by raw tag membership, which can only
+    // over-count the published total. Prove an out-of-range deep page here,
+    // before any article, filter-count or popular read. A failed probe falls
+    // through to the normal path; it never fabricates a 404.
+    if (filters.tag && filters.page > 1) {
+      let pageHasMembership: boolean | null = null;
+      try {
+        pageHasMembership = await tagHasMembershipAtOffset(filters.tag, (filters.page - 1) * filters.pageSize);
+      } catch {
+        pageHasMembership = null;
+      }
+      if (pageHasMembership === false) notFound();
+    }
+
+    return Promise.all([
       getListArticles(articleFilters),
       getListFilterData(filters.range),
       getListTopViewedArticles({
@@ -121,8 +138,8 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
         language: filters.language,
         tag: filters.tag,
       }),
-    ]),
-  );
+    ]);
+  });
   const articles = countFromJurisdictions ? withJurisdictionTotal(articleResult, jurisdictionArticleCounts, filters) : articleResult;
   const paramsString = params.toString();
 

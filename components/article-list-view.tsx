@@ -1,10 +1,11 @@
+import type { ReactNode } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { ArticleListReturnState } from "@/components/article-list-return-state";
 import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { RecentDecisionMark } from "@/components/recent-decision-mark";
 import type { ArticleListItem, ArticleListResult } from "@/lib/db/types";
 import { articleHrefWithReturnTo } from "@/lib/navigation/article-return";
-import { paginationWindow } from "@/lib/navigation/pagination";
+import { paginationControls } from "@/lib/navigation/pagination";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { articleCaseNumber } from "@/lib/ui/article-case-number";
 import { articleTitleForDisplay } from "@/lib/ui/article-title";
@@ -125,29 +126,32 @@ function CountryMenu({
   );
 }
 
+function PaginationControl({ href, children }: { href: string | null; children: ReactNode }) {
+  const isDisabled = href === null;
+  const className = cn(
+    "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-archive-line px-3 text-[15px] font-semibold",
+    isDisabled ? "bg-archive-surface text-archive-subtle" : "bg-white text-archive-text hover:border-archive-accent hover:text-archive-accent",
+  );
+  if (!href) return <span aria-disabled="true" className={className}>{children}</span>;
+  return <IntentPrefetchLink href={href} className={className}>{children}</IntentPrefetchLink>;
+}
+
 function ListPagination({ result, paramsString }: { result: ArticleListResult; paramsString: string }) {
   const { page, pageSize, total } = result.pageInfo;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   if (totalPages <= 1) return null;
 
-  const items = paginationWindow(page, totalPages);
-  const hasPrevious = page > 1;
-  const hasNext = page < totalPages;
+  const controls = paginationControls(page, totalPages);
+  const previousHref = controls.previousPage === null ? null : hrefForPage(paramsString, controls.previousPage);
+  const nextHref = controls.nextPage === null ? null : hrefForPage(paramsString, controls.nextPage);
 
   return (
     <nav className="flex flex-wrap items-center justify-center gap-1 border-t border-archive-line px-4 py-5" aria-label="페이지">
-      <IntentPrefetchLink
-        href={hrefForPage(paramsString, page - 1)}
-        aria-disabled={!hasPrevious}
-        className={cn(
-          "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-archive-line px-3 text-[15px] font-semibold",
-          hasPrevious ? "bg-white text-archive-text hover:border-archive-accent hover:text-archive-accent" : "pointer-events-none bg-archive-surface text-archive-subtle",
-        )}
-      >
+      <PaginationControl href={previousHref}>
         <ChevronLeft className="size-4" aria-hidden="true" />
         이전
-      </IntentPrefetchLink>
-      {items.map((item) => (
+      </PaginationControl>
+      {controls.pages.map((item) => (
         <IntentPrefetchLink
           key={item}
           href={hrefForPage(paramsString, item)}
@@ -160,17 +164,10 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
           {item}
         </IntentPrefetchLink>
       ))}
-      <IntentPrefetchLink
-        href={hrefForPage(paramsString, page + 1)}
-        aria-disabled={!hasNext}
-        className={cn(
-          "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-archive-line px-3 text-[15px] font-semibold",
-          hasNext ? "bg-white text-archive-text hover:border-archive-accent hover:text-archive-accent" : "pointer-events-none bg-archive-surface text-archive-subtle",
-        )}
-      >
+      <PaginationControl href={nextHref}>
         다음
         <ChevronRight className="size-4" aria-hidden="true" />
-      </IntentPrefetchLink>
+      </PaginationControl>
     </nav>
   );
 }

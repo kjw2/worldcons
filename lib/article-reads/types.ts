@@ -58,6 +58,13 @@ export interface ArticleReadRepository {
   listPublicSitemapArticles(): Promise<SitemapArticleEntry[]>;
   listTopViewedArticles(limit?: number, filters?: TopViewedArticleFilters): Promise<ArticleListItem[]>;
   listRelatedArticleIds(tagId: string, options: RelatedArticleIdsOptions): Promise<string[]>;
+  /**
+   * Cheap raw tag-membership upper-bound probe for crawlable pagination. A
+   * `false` result proves the offset is past every possible member, so callers
+   * may return a real 404 before any expensive list work. Optional because
+   * only the D1 public authority implements it.
+   */
+  tagHasMembershipAtOffset?(tag: string, offset: number): Promise<boolean>;
   getArticleBySelect(
     slug: string,
     select: ArticleReadSelect,

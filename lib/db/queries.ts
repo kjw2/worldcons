@@ -136,6 +136,18 @@ export async function listTopViewedArticles(
   return articleReads().listTopViewedArticles(limit, filters);
 }
 
+/**
+ * Raw tag-membership upper-bound probe for the crawlable `/list` surface.
+ * `null` means the active adapter cannot answer cheaply; callers must continue
+ * on the normal path rather than treating that as out of range.
+ */
+export async function tagHasMembershipAtOffset(tag: string, offset: number): Promise<boolean | null> {
+  observePublicProjectionRead();
+  const reads = articleReads();
+  if (typeof reads.tagHasMembershipAtOffset !== "function") return null;
+  return reads.tagHasMembershipAtOffset(tag, offset);
+}
+
 export async function listJurisdictionArticleCounts(
   jurisdictions: string[] = [],
   options: JurisdictionCountOptions = {},

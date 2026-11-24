@@ -634,6 +634,51 @@ export function createD1ArticleReadRepository(
   }
 
   /**
+   * Cheap upper-bound probe for crawlable tag pagination. Raw `article_tags`
+   * membership (including unpublished cases) can only over-count the public
+   * total, so `false` proves the requested offset is past every possible row
+   * and the caller can return a real 404 without the expensive publishability
+   * overlay, counts or popular articles. `true` never asserts that the offset is
+   * publicly visible; the normal list read still decides that.
+   *
+   * The common offset range reuses the request-local candidate memo so a valid
+   * page's later list/popular reads share the same membership lookup. Deeper
+   * offsets use one indexed `limit 1 offset ?` probe instead of materializing
+   * the full member id list.
+   */
+  async function tagHasMembershipAtOffset(
+    binding: D1RuntimeDatabase,
+    tag: string,
+    offset: number,
+  ): Promise<boolean> {
+    if (!Number.isSafeInteger(offset) || offset < 0) return true;
+    if (offset < maxRows) {
+      try {
+        const ids = await tagCandidateArticleIds(binding, tag);
+        return offset < ids.length;
+      } catch (error) {
+        // An overflow proves the candidate set is larger than maxRows, so a
+        // smaller offset is necessarily in range.
+        if (error instanceof D1ShadowTruncatedError) return true;
+        throw error;
+      }
+    }
+
+    const tagIds = await tagIdsForTag(binding, tag);
+    if (tagIds.length === 0) return false;
+    if (tagIds.length > D1_IN_BATCH_SIZE) return true;
+    const placeholders = tagIds.map(() => "?").join(", ");
+    const rows = await runD1AuthoredRead({
+      binding,
+      table: requireTable("article_tags"),
+      select: ["article_id"],
+      sql: `select article_id from article_tags where tag_id in (${placeholders}) order by article_id limit 1 offset ?`,
+      params: [...tagIds, offset],
+    });
+    return rows.length > 0;
+  }
+
+  /**
    * Whether the bounded SQL fast path may serve this request. It only handles the
    * common public shapes - unfiltered or source/jurisdiction/type/language/range
    * - for the first (bounded) pages, and only when no tag/ids/includeUnpublished
@@ -825,7 +870,9 @@ export function createD1ArticleReadRepository(
     );
     if (filters.includeViewCounts !== false) items = await attachViewCounts(binding, items);
 
-    const minimumTotal = from + items.length + (hasMore ? 1 : 0);
+    // An empty window proves no rows at this offset, not that the corpus has
+    // `from` rows. Never turn the requested offset into a lower-bound total.
+    const minimumTotal = items.length === 0 ? 0 : from + items.length + (hasMore ? 1 : 0);
     return {
       items,
       pageInfo: { page, pageSize, total: minimumTotal, hasMore, totalIsExact: false },
@@ -982,7 +1029,9 @@ export function createD1ArticleReadRepository(
     if (filters.includeViewCounts !== false) items = await attachViewCounts(binding, items);
 
     const hasMore = from + pageSize < (stableCandidateTotal ?? matched.length);
-    const minimumTotal = from + items.length + (hasMore ? 1 : 0);
+    // See the fast path above: an empty page must not report its requested
+    // offset as the lower-bound total, or pagination generates phantom links.
+    const minimumTotal = items.length === 0 ? 0 : from + items.length + (hasMore ? 1 : 0);
     const total = stableCandidateTotal ?? (countMode === "exact" ? Math.max(matched.length, minimumTotal) : minimumTotal);
     return {
       items,
@@ -1259,6 +1308,8 @@ export function createD1ArticleReadRepository(
     listPublicSitemapArticles,
     listTopViewedArticles,
     listRelatedArticleIds,
+    tagHasMembershipAtOffset: (tag: string, offset: number) =>
+      tagHasMembershipAtOffset(requireCore(dependencies), tag, offset),
     getArticleBySelect,
     getArticleSourceTextBySlug,
   };
