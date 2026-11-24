@@ -575,6 +575,9 @@ test("D1 listJurisdictionArticleCounts matches the legacy RPC grouping and zero-
   assert.deepEqual(shadow, { France: 2, Spain: 0 });
 
   assert.match(d1.calls[0].sql.toLowerCase(), /with eligible as[\s\S]*join article_publications_p3[\s\S]*a\.status='summarized'[\s\S]*group by jurisdiction/);
+  assert.match(d1.calls[0].sql, /a\.collection_publishable/);
+  assert.match(d1.calls[0].sql, /collection_publishable = 1/);
+  assert.doesNotMatch(d1.calls[0].sql, /json_extract|json_type/);
   assert.deepEqual(d1.calls[0].params, [D1_REFERENCE_READ_DEFAULT_MAX_ROWS + 1]);
 });
 

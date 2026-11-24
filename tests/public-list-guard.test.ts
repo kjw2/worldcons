@@ -8,6 +8,7 @@ import {
   type RateLimitBinding,
 } from "../lib/cloudflare/public-list-guard";
 import type { EdgeCacheStorage } from "../lib/cloudflare/public-edge-cache-runtime";
+import { createPublicListInflight } from "../lib/cloudflare/public-list-inflight";
 import { createPublicRateLimitStore } from "../lib/cloudflare/public-rate-limit";
 
 function memoryCache(): EdgeCacheStorage & { entries: Map<string, Response> } {
@@ -55,18 +56,31 @@ function guardOptions(
   cache: EdgeCacheStorage,
   onOrigin: () => void,
   headers: Record<string, string> = {},
-  extra: Pick<Partial<PublicListGuardOptions>, "globalBudget"> & { method?: string } = {},
+  extra: Pick<Partial<PublicListGuardOptions>, "globalBudget" | "inflight"> & { method?: string } = {},
 ) {
   return {
     request: request(url, headers, extra.method),
     env,
     cache,
     globalBudget: extra.globalBudget,
+    inflight: extra.inflight,
     fetchOrigin: async () => {
       onOrigin();
       return htmlResponse();
     },
   };
+}
+
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function tick(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
 test("canonicalizes only semantically equivalent list queries", () => {
@@ -335,4 +349,253 @@ test("the in-isolate global budget protects against distributed IPs, including c
   assert.equal(third.response.status, 429);
   assert.equal(third.response.headers.get("x-worldcons-list-guard"), "global_limit");
   assert.equal(originCalls, 1, "the global budget must stop the distributed request before origin");
+});
+
+function coalescingOptions(
+  url: string,
+  env: PublicListGuardEnv,
+  cache: EdgeCacheStorage,
+  inflight: ReturnType<typeof createPublicListInflight>,
+  fetchOrigin: () => Promise<Response>,
+  headers: Record<string, string> = {},
+) {
+  return {
+    request: request(url, headers),
+    env,
+    cache,
+    inflight,
+    fetchOrigin: async () => fetchOrigin(),
+  };
+}
+
+test("concurrent same-key cache misses coalesce into one origin read", async () => {
+  const cache = memoryCache();
+  const env: PublicListGuardEnv = {
+    WORLDCONS_LIST_IP_LIMITER: fixedLimiter(1_000),
+    WORLDCONS_LIST_MISS_LIMITER: fixedLimiter(1_000),
+  };
+  const inflight = createPublicListInflight({ maxKeys: 4, maxWaitersPerKey: 4 });
+  const gate = deferred();
+  let originCalls = 0;
+  const options = () => coalescingOptions(
+    "https://x.test/list?page=2&view=grid",
+    env,
+    cache,
+    inflight,
+    async () => {
+      originCalls += 1;
+      await gate.promise;
+      return htmlResponse();
+    },
+  );
+
+  const firstPromise = guardPublicListRequest(options());
+  await tick();
+  const secondPromise = guardPublicListRequest(options());
+  await tick();
+  assert.equal(originCalls, 1, "the follower must join instead of rendering again");
+
+  gate.resolve();
+  const [first, second] = await Promise.all([firstPromise, secondPromise]);
+  assert.equal(first.status, "MISS");
+  assert.equal(second.status, "COALESCED");
+  assert.equal(second.response.headers.get("x-worldcons-edge-cache"), "COALESCED");
+  assert.equal(await first.response.text(), "<html>ok</html>");
+  assert.equal(await second.response.text(), "<html>ok</html>", "each participant gets a fresh body");
+  assert.equal(originCalls, 1);
+  assert.equal(inflight.size(), 0, "a settled key is removed immediately");
+
+  const third = await guardPublicListRequest(options());
+  assert.equal(third.status, "HIT");
+  assert.equal(originCalls, 1, "the leader stored the coalesced result in the shared cache");
+});
+
+test("coalesced misses still consume every request's per-IP total limit", async () => {
+  const cache = memoryCache();
+  const env: PublicListGuardEnv = {
+    WORLDCONS_LIST_IP_LIMITER: fixedLimiter(2),
+    WORLDCONS_LIST_MISS_LIMITER: fixedLimiter(1_000),
+  };
+  const inflight = createPublicListInflight();
+  const gate = deferred();
+  let originCalls = 0;
+  const options = () => coalescingOptions(
+    "https://x.test/list?page=12",
+    env,
+    cache,
+    inflight,
+    async () => {
+      originCalls += 1;
+      await gate.promise;
+      return htmlResponse();
+    },
+  );
+
+  const firstPromise = guardPublicListRequest(options());
+  await tick();
+  const secondPromise = guardPublicListRequest(options());
+  await tick();
+  gate.resolve();
+  const [first, second] = await Promise.all([firstPromise, secondPromise]);
+  assert.equal(first.status, "MISS");
+  assert.equal(second.status, "COALESCED");
+  assert.equal(originCalls, 1);
+
+  const third = await guardPublicListRequest(options());
+  assert.equal(third.response.status, 429);
+  assert.equal(third.response.headers.get("x-worldcons-list-guard"), "ip_limit");
+  assert.equal(originCalls, 1, "the per-IP total cap still applies to the coalesced hit");
+});
+
+test("personalized requests never join or share a public in-flight render", async () => {
+  const cache = memoryCache();
+  const env: PublicListGuardEnv = {
+    WORLDCONS_LIST_IP_LIMITER: fixedLimiter(1_000),
+    WORLDCONS_LIST_MISS_LIMITER: fixedLimiter(1_000),
+  };
+  const inflight = createPublicListInflight();
+  const gate = deferred();
+  let originCalls = 0;
+  const fetchOrigin = async () => {
+    originCalls += 1;
+    const call = originCalls;
+    if (call === 1) await gate.promise;
+    return htmlResponse();
+  };
+
+  const publicRequest = guardPublicListRequest(
+    coalescingOptions("https://x.test/list?page=13", env, cache, inflight, fetchOrigin),
+  );
+  await tick();
+  assert.equal(originCalls, 1);
+
+  const cookieRequest = await guardPublicListRequest(
+    coalescingOptions("https://x.test/list?page=13", env, cache, inflight, fetchOrigin, { cookie: "session=1" }),
+  );
+  assert.equal(cookieRequest.status, "BYPASS");
+  assert.equal(originCalls, 2, "a cookie request must render on its own, never from the shared in-flight body");
+  assert.notEqual(cookieRequest.response.headers.get("x-worldcons-edge-cache"), "COALESCED");
+
+  gate.resolve();
+  const publicResult = await publicRequest;
+  assert.equal(publicResult.status, "MISS");
+  assert.equal(inflight.size(), 0);
+});
+
+test("a non-cacheable origin response is never shared with waiters", async () => {
+  const cache = memoryCache();
+  const env: PublicListGuardEnv = {
+    WORLDCONS_LIST_IP_LIMITER: fixedLimiter(1_000),
+    WORLDCONS_LIST_MISS_LIMITER: fixedLimiter(1_000),
+  };
+  const inflight = createPublicListInflight();
+  const gate = deferred();
+  let originCalls = 0;
+  const fetchOrigin = async () => {
+    originCalls += 1;
+    const call = originCalls;
+    if (call === 1) {
+      await gate.promise;
+      return new Response("{\"personalized\":true}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return htmlResponse();
+  };
+
+  const leaderPromise = guardPublicListRequest(
+    coalescingOptions("https://x.test/list?page=14", env, cache, inflight, fetchOrigin),
+  );
+  await tick();
+  const followerPromise = guardPublicListRequest(
+    coalescingOptions("https://x.test/list?page=14", env, cache, inflight, fetchOrigin),
+  );
+  await tick();
+  gate.resolve();
+
+  const [leader, follower] = await Promise.all([leaderPromise, followerPromise]);
+  assert.equal(leader.status, "BYPASS");
+  assert.equal(follower.status, "MISS", "the waiter renders its own cacheable page");
+  assert.equal(originCalls, 2);
+  assert.equal(await leader.response.text(), "{\"personalized\":true}");
+  assert.equal(await follower.response.text(), "<html>ok</html>");
+  assert.equal(inflight.size(), 0);
+});
+
+test("a failed leader settles the key so waiters fall back and cleanup runs", async () => {
+  const cache = memoryCache();
+  const env: PublicListGuardEnv = {
+    WORLDCONS_LIST_IP_LIMITER: fixedLimiter(1_000),
+    WORLDCONS_LIST_MISS_LIMITER: fixedLimiter(1_000),
+  };
+  const inflight = createPublicListInflight();
+  const gate = deferred();
+  let originCalls = 0;
+  const fetchOrigin = async () => {
+    originCalls += 1;
+    if (originCalls === 1) {
+      await gate.promise;
+      throw new Error("origin down");
+    }
+    return htmlResponse();
+  };
+
+  const leaderPromise = guardPublicListRequest(
+    coalescingOptions("https://x.test/list?page=15", env, cache, inflight, fetchOrigin),
+  );
+  await tick();
+  const followerPromise = guardPublicListRequest(
+    coalescingOptions("https://x.test/list?page=15", env, cache, inflight, fetchOrigin),
+  );
+  await tick();
+  gate.resolve();
+
+  const [leader, follower] = await Promise.allSettled([leaderPromise, followerPromise]);
+  assert.equal(leader.status, "rejected");
+  assert.equal(follower.status, "fulfilled");
+  if (follower.status === "fulfilled") {
+    assert.equal(follower.value.status, "MISS");
+    assert.equal(await follower.value.response.text(), "<html>ok</html>");
+  }
+  assert.equal(originCalls, 2);
+  assert.equal(inflight.size(), 0, "failure must not strand the in-flight key");
+});
+
+test("coalescing is bounded by key count and waiters per key", async () => {
+  const cache = memoryCache();
+  const env: PublicListGuardEnv = {
+    WORLDCONS_LIST_IP_LIMITER: fixedLimiter(1_000),
+    WORLDCONS_LIST_MISS_LIMITER: fixedLimiter(1_000),
+  };
+  const inflight = createPublicListInflight({ maxKeys: 1, maxWaitersPerKey: 1 });
+  const gate = deferred();
+  let originCalls = 0;
+  const fetchOrigin = async () => {
+    originCalls += 1;
+    if (originCalls === 1) await gate.promise;
+    return htmlResponse();
+  };
+  const options = (url: string) => coalescingOptions(url, env, cache, inflight, fetchOrigin);
+
+  const leaderPromise = guardPublicListRequest(options("https://x.test/list?page=16"));
+  await tick();
+  const followerPromise = guardPublicListRequest(options("https://x.test/list?page=16"));
+  await tick();
+  assert.equal(originCalls, 1);
+
+  const extraWaiter = await guardPublicListRequest(options("https://x.test/list?page=16"));
+  assert.equal(extraWaiter.status, "MISS", "a waiter over the per-key bound renders on its own");
+  assert.equal(originCalls, 2);
+
+  const otherKey = await guardPublicListRequest(options("https://x.test/list?page=17"));
+  assert.equal(otherKey.status, "MISS", "a key over the isolate key bound renders on its own");
+  assert.equal(originCalls, 3);
+
+  gate.resolve();
+  const [leader, follower] = await Promise.all([leaderPromise, followerPromise]);
+  assert.equal(leader.status, "MISS");
+  assert.equal(follower.status, "COALESCED");
+  assert.equal(originCalls, 3);
+  assert.equal(inflight.size(), 0);
 });

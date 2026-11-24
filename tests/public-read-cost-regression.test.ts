@@ -5,6 +5,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { createD1ArticleReadRepository } from "../lib/article-reads/d1-repository";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
 import { createD1ReadCost, wrapD1BindingWithReadCost } from "../lib/cloudflare/d1/read-cost";
+import { createD1ReferenceReadRepository } from "../lib/reference-reads/d1-repository";
 
 /**
  * Regression gate for the 2026-11-22 public `/list` cost spike.
@@ -227,4 +228,68 @@ test("the crawlable /list surface never requests a full exact count and keeps fi
   assert.doesNotMatch(listPage, /count: countFromJurisdictions \? "none" : "exact"/);
   const homeRange = readFileSync(new URL("../app/api/home/range/route.ts", import.meta.url), "utf8");
   assert.doesNotMatch(homeRange, /count: "exact"/);
+});
+
+test("tag-filter resolution uses one bounded tags lookup instead of slug+name scans", async () => {
+  const sqlite = createCore();
+  const captured: Captured[] = [];
+  const repository = createD1ArticleReadRepository({
+    binding: binding(sqlite, captured),
+    maxRows: 10_000,
+  });
+
+  const result = await repository.listArticles({ tag: "missing-tag", count: "none" });
+  assert.deepEqual(result.items, []);
+  assert.equal(captured.length, 1, "an absent tag must stop after one lookup");
+  assert.match(captured[0].sql, /select id from tags where slug = \? or name = \? order by id limit \?/);
+  assert.deepEqual(captured[0].params, ["missing-tag", "missing-tag", 10_001]);
+});
+
+test("jurisdiction counts use the materialized publishable predicate with JSON parity", async () => {
+  const sqlite = createCore();
+  seed(sqlite);
+  const update = sqlite.prepare("update articles set source_metadata = ? where id = ?");
+  const idFor = (index: number) => `00000000-0000-4000-a000-${String(index).padStart(12, "0")}`;
+  const variants: Array<string | null> = [
+    JSON.stringify({ collection: { publishable: true } }),
+    JSON.stringify({ collection: { publishable: "true" } }),
+    JSON.stringify({ collection: { publishable: false } }),
+    JSON.stringify({ collection: { publishable: 1 } }),
+    JSON.stringify({ collection: { publishable: 0 } }),
+    JSON.stringify({ collection: {} }),
+    JSON.stringify({}),
+    null,
+  ];
+  variants.forEach((value, index) => update.run(value, idFor(index)));
+
+  const jsonPredicate = `(
+    json_type(source_metadata, '$.collection.publishable') = 'true'
+    OR (
+      json_type(source_metadata, '$.collection.publishable') = 'text'
+      AND json_extract(source_metadata, '$.collection.publishable') = 'true'
+    )
+  )`;
+  const legacy = (sqlite.prepare(`select count(*) as n from articles where ${jsonPredicate}`).get() as { n: number }).n;
+  const materialized = (sqlite.prepare("select count(*) as n from articles where collection_publishable = 1").get() as { n: number }).n;
+  assert.equal(materialized, legacy, "the stored flag must match the JSON1 predicate for every valid JSON shape");
+
+  const malformedId = idFor(variants.length);
+  update.run("not json", malformedId);
+  const malformedFlag = sqlite.prepare("select collection_publishable as flag from articles where id = ?").get(malformedId) as { flag: number };
+  assert.equal(malformedFlag.flag, 0, "malformed metadata is conservatively unpublishable");
+  assert.throws(
+    () => sqlite.prepare(`select count(*) from articles where ${jsonPredicate}`).get(),
+    /malformed JSON/i,
+    "the legacy JSON predicate raises on malformed metadata; the materialized flag does not",
+  );
+
+  const captured: Captured[] = [];
+  const repository = createD1ReferenceReadRepository({ binding: binding(sqlite, captured) });
+  const counts = await repository.listJurisdictionArticleCounts(["United States"]);
+  assert.equal(typeof counts["United States"], "number");
+  const countSql = captured.find((entry) => /with eligible/i.test(entry.sql));
+  assert.ok(countSql, "the jurisdiction count query must be issued");
+  assert.match(countSql.sql, /a\.collection_publishable/);
+  assert.match(countSql.sql, /collection_publishable = 1/);
+  assert.doesNotMatch(countSql.sql, /json_extract|json_type/, "the aggregate must not parse JSON per row");
 });

@@ -262,6 +262,7 @@ function withPublicReadObservability(
   headers.set("x-worldcons-rows-read", String(cost.rowsRead));
   headers.set("x-worldcons-rows-read-available", String(cost.rowsReadAvailable));
   headers.set("x-worldcons-read-ms", String(Date.now() - startedMs));
+  if (cacheStatus === "COALESCED") headers.set("x-worldcons-list-coalesced", "1");
   console.log(JSON.stringify({
     event: "public_read_cost",
     path: pathname,
@@ -271,6 +272,7 @@ function withPublicReadObservability(
     rowsReadAvailable: cost.rowsReadAvailable,
     durationMs: Date.now() - startedMs,
     edgeCache: cacheStatus,
+    coalesced: cacheStatus === "COALESCED",
     topReads: cost.topReads,
   }));
   return new Response(response.body, {

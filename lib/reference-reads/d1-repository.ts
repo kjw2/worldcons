@@ -95,17 +95,11 @@ function tagOrder(sort: NormalizedTagListOptions["sort"]): D1RuntimeReadOrder[] 
 
 /**
  * Authored SQL mirror of the PostgREST `source_metadata->collection->>publishable
- * = 'true'` predicate: a JSON boolean `true` or the string `"true"` both count,
- * and any other JSON type (including a numeric `1`) is excluded.
+ * = 'true'` predicate is materialized as `articles.collection_publishable`
+ * (migrations 0013/0014). For every valid JSON value the stored flag matches the
+ * JSON1 predicate exactly; NULL or malformed metadata is false instead of
+ * raising, which is the same conservative behavior as the article list reader.
  */
-const PUBLISHABLE_JSON_PREDICATE = `(
-  json_type(source_metadata, '$.collection.publishable') = 'true'
-  OR (
-    json_type(source_metadata, '$.collection.publishable') = 'text'
-    AND json_extract(source_metadata, '$.collection.publishable') = 'true'
-  )
-)`;
-
 function boundedIngestionLimit(limit: number | undefined, maxRows: number): number {
   const requested = typeof limit === "number" && Number.isFinite(limit) ? Math.floor(limit) : 20;
   if (requested <= 0) return 0;
@@ -216,10 +210,11 @@ export function createD1ReferenceReadRepository(
     // eligible-row count (the CTE is capped at maxRows+1 exactly like the old
     // `LIMIT ?`), so the overflow check is identical to the previous
     // row-count behavior even when no row is publishable. The publishable
-    // predicate mirrors `isPublishableMetadata` via JSON1.
+    // predicate is the materialized `collection_publishable` flag (0013/0014)
+    // instead of a per-row JSON1 parse.
     const sql = `
       WITH eligible AS (
-        SELECT a.jurisdiction AS jurisdiction,a.source_metadata AS source_metadata
+        SELECT a.jurisdiction AS jurisdiction,a.collection_publishable AS collection_publishable
         FROM articles a
         JOIN article_publications_p3 p ON p.article_id=a.id AND p.state='published'
         WHERE a.status='summarized'
@@ -242,7 +237,7 @@ export function createD1ReferenceReadRepository(
       LEFT JOIN (
         SELECT jurisdiction,COUNT(*) AS article_count
         FROM eligible
-        WHERE ${PUBLISHABLE_JSON_PREDICATE}
+        WHERE collection_publishable = 1
           AND jurisdiction IS NOT NULL AND TRIM(jurisdiction)<>''
         GROUP BY jurisdiction
       ) grouped ON 1=1

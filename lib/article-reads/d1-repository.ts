@@ -595,19 +595,18 @@ export function createD1ArticleReadRepository(
   }
 
   async function tagIdsForTag(binding: D1RuntimeDatabase, tag: string): Promise<string[]> {
-    const bySlug = await read(binding, "tags", {
+    // Slug and name used to be two sequential lookups. One bounded OR query
+    // resolves both aliases in a single round trip (the tags(name, id) index
+    // covers the name arm) and keeps the same union semantics.
+    const rows = await runD1AuthoredRead({
+      binding,
+      table: requireTable("tags"),
       select: ["id"],
-      where: [{ column: "slug", value: tag }],
-      limit: maxRows + 1,
+      sql: "select id from tags where slug = ? or name = ? order by id limit ?",
+      params: [tag, tag, maxRows + 1],
     });
-    if (bySlug.length > maxRows) throw new D1ShadowTruncatedError("tagIdsForTag");
-    const byName = await read(binding, "tags", {
-      select: ["id"],
-      where: [{ column: "name", value: tag }],
-      limit: maxRows + 1,
-    });
-    if (byName.length > maxRows) throw new D1ShadowTruncatedError("tagIdsForTag");
-    return uniqueStrings([...bySlug.map((row) => row.id), ...byName.map((row) => row.id)]);
+    if (rows.length > maxRows) throw new D1ShadowTruncatedError("tagIdsForTag");
+    return uniqueStrings(rows.map((row) => row.id));
   }
 
   async function articleIdsForTagIds(binding: D1RuntimeDatabase, tagIds: string[]): Promise<string[]> {

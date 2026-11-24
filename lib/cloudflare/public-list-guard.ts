@@ -8,6 +8,12 @@ import {
 } from "@/lib/cloudflare/public-edge-cache";
 import type { EdgeCacheStorage } from "@/lib/cloudflare/public-edge-cache-runtime";
 import {
+  PUBLIC_LIST_INFLIGHT_MAX_BODY_BYTES,
+  publicListInflight,
+  type PublicListInflight,
+  type PublicListInflightSnapshot,
+} from "@/lib/cloudflare/public-list-inflight";
+import {
   consumeFixedWindow,
   createPublicRateLimitStore,
   pruneExpiredRateLimitEntries,
@@ -32,7 +38,7 @@ export interface PublicListGuardEnv {
   WORLDCONS_PUBLIC_RATE_LIMIT_DISABLED?: string;
 }
 
-export type PublicListGuardStatus = "HIT" | "MISS" | "BYPASS" | "REJECTED";
+export type PublicListGuardStatus = "HIT" | "MISS" | "COALESCED" | "BYPASS" | "REJECTED";
 
 export interface PublicListGuardResult {
   response: Response;
@@ -276,6 +282,29 @@ function storedResponse(response: Response): Response {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+/**
+ * Rebuilds a cacheable origin response from an immutable body snapshot. Header
+ * framing that belonged to the original stream (`content-length`,
+ * `transfer-encoding`) and any content coding are dropped because the snapshot
+ * holds the decoded bytes; every participant gets its own body copy.
+ */
+function snapshotResponse(
+  snapshot: PublicListInflightSnapshot,
+  status: "MISS" | "COALESCED",
+): Response {
+  const headers = new Headers(snapshot.headers.map(([name, value]) => [name, value]));
+  headers.delete("content-encoding");
+  headers.delete("content-length");
+  headers.delete("transfer-encoding");
+  headers.set("cache-control", PUBLIC_EDGE_CACHE_CONTROL);
+  headers.set(PUBLIC_EDGE_CACHE_STATUS_HEADER, status);
+  return new Response(snapshot.body.slice(0), {
+    status: snapshot.status,
+    statusText: snapshot.statusText,
+    headers,
+  });
+}
+
 export interface PublicListGuardOptions {
   request: Request;
   env: PublicListGuardEnv;
@@ -284,6 +313,8 @@ export interface PublicListGuardOptions {
   waitUntil?: (promise: Promise<unknown>) => void;
   /** Test/operations override for the in-isolate aggregate fallback. */
   globalBudget?: PublicListGuardGlobalBudgetOptions;
+  /** Test/operations override for the isolate-local in-flight registry. */
+  inflight?: PublicListInflight;
 }
 
 /**
@@ -296,6 +327,11 @@ export interface PublicListGuardOptions {
  * - authorization/cookie/RSC/prefetch requests skip the shared cache only and
  *   still consume the per-IP all-request (120/min) and origin-miss (30/min)
  *   limits before origin;
+ * - concurrent cacheable misses for the same canonical URL are coalesced inside
+ *   the isolate: one leader renders and the bounded waiters reuse its buffered
+ *   body, while every request still consumes its own per-IP limits;
+ * - a non-cacheable, oversized or failed leader response is never shared, so a
+ *   waiter falls back to its own bounded origin read;
  * - a limiter failure fails closed for origin reads, and a cache lookup failure
  *   still consumes both limits, so a broken cache cannot cause unbounded D1.
  */
@@ -395,13 +431,82 @@ export async function guardPublicListRequest(options: PublicListGuardOptions): P
     }
   }
 
-  const response = await fetchOrigin(canonicalRequest);
-  if (!cacheable || !cache || !key || !isEdgeCacheableResponse(response)) {
-    return { response: markedResponse(response, "BYPASS"), status: "BYPASS", key };
+  const inflight = options.inflight ?? publicListInflight;
+
+  const runOrigin = async (): Promise<{
+    response: Response;
+    status: "MISS" | "BYPASS";
+    snapshot: PublicListInflightSnapshot | null;
+  }> => {
+    const response = await fetchOrigin(canonicalRequest);
+    if (!cacheable || !cache || !key || !isEdgeCacheableResponse(response)) {
+      return { response: markedResponse(response, "BYPASS"), status: "BYPASS", snapshot: null };
+    }
+
+    const contentEncoding = response.headers.get("content-encoding");
+    const contentLength = Number(response.headers.get("content-length"));
+    const cannotShare =
+      (contentEncoding !== null && contentEncoding.toLowerCase() !== "identity") ||
+      (Number.isFinite(contentLength) && contentLength > PUBLIC_LIST_INFLIGHT_MAX_BODY_BYTES);
+    if (cannotShare) {
+      const put = cache.put(key, storedResponse(response.clone())).catch(() => undefined);
+      if (options.waitUntil) options.waitUntil(put);
+      else await put;
+      return { response: markedResponse(response, "MISS"), status: "MISS", snapshot: null };
+    }
+
+    const body = await response.arrayBuffer();
+    const headerEntries: Array<[string, string]> = [];
+    response.headers.forEach((value, name) => {
+      headerEntries.push([name, value]);
+    });
+    const snapshot: PublicListInflightSnapshot = {
+      body,
+      status: response.status,
+      statusText: response.statusText,
+      headers: headerEntries,
+    };
+
+    // Await the cache write before publishing so a request that arrives after
+    // the leader settles finds the entry instead of starting another D1 read.
+    await cache.put(key, snapshotResponse(snapshot, "MISS")).catch(() => undefined);
+
+    return {
+      response: snapshotResponse(snapshot, "MISS"),
+      status: "MISS",
+      snapshot: body.byteLength <= PUBLIC_LIST_INFLIGHT_MAX_BODY_BYTES ? snapshot : null,
+    };
+  };
+
+  if (!cacheable || !cache || !key) {
+    const outcome = await runOrigin();
+    return { response: outcome.response, status: outcome.status, key };
   }
 
-  const put = cache.put(key, storedResponse(response.clone())).catch(() => undefined);
-  if (options.waitUntil) options.waitUntil(put);
-  else await put;
-  return { response: markedResponse(response, "MISS"), status: "MISS", key };
+  const join = inflight.join(key);
+  if (join.role === "follower") {
+    const snapshot = await join.result;
+    if (snapshot) {
+      return { response: snapshotResponse(snapshot, "COALESCED"), status: "COALESCED", key };
+    }
+    // The leader could not publish a safe shared body (or waited too long);
+    // this request keeps its own already-consumed per-IP budget and renders.
+    const outcome = await runOrigin();
+    return { response: outcome.response, status: outcome.status, key };
+  }
+  if (join.role === "leader") {
+    try {
+      const outcome = await runOrigin();
+      join.settle(outcome.snapshot);
+      return { response: outcome.response, status: outcome.status, key };
+    } catch (error) {
+      join.settle(null);
+      throw error;
+    }
+  }
+
+  // Coalescing bound reached: still serve this request through its own bounded
+  // origin read rather than failing it.
+  const outcome = await runOrigin();
+  return { response: outcome.response, status: outcome.status, key };
 }
