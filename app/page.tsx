@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { unstable_cache as plainUnstableCache } from "next/cache";
 import { freshnessAwarePublicCache as unstable_cache } from "@/lib/public-freshness-cache";
 import { Suspense } from "react";
 import { ArrowRight } from "lucide-react";
@@ -35,6 +36,15 @@ export const metadata: Metadata = {
 
 const CONSTITUTIONAL_ISSUE_TYPES = new Set<TagType>(["right", "topic", "doctrine", "procedure"]);
 
+// Jurisdiction counts are public filter metadata with no article/approval
+// state. Cache them on the same plain policy as the /list filter panel so the
+// full jurisdiction aggregate is not rerun on every uncached portal render.
+const getHomeJurisdictionArticleCounts = plainUnstableCache(
+  async () => listJurisdictionArticleCounts([]),
+  ["home-jurisdiction-article-counts-v1"],
+  { revalidate: 60, tags: [PUBLIC_ARTICLE_COUNTS_CACHE_TAG] },
+);
+
 const getHomePortalData = unstable_cache(
   async () => {
     const [sources, tags] = await Promise.all([
@@ -50,7 +60,7 @@ const getHomePortalData = unstable_cache(
           listArticles({ jurisdiction, page: 1, pageSize: 1, count: "none", includeViewCounts: false }),
         ),
       ),
-      listJurisdictionArticleCounts(jurisdictions),
+      getHomeJurisdictionArticleCounts(),
     ]);
     const countries = jurisdictions.map((jurisdiction) => {
       const source = sources.find((candidate) => candidate.isActive && candidate.jurisdiction === jurisdiction);

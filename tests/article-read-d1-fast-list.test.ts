@@ -441,7 +441,7 @@ test("fast list reads a bounded window, never the full corpus, and applies sourc
   }
 });
 
-test("fast list falls back to the full composition for tags, q and ids", async () => {
+test("fast list falls back to the full composition for tags and ids, and keeps q on the bounded path only without an exact count", async () => {
   const sqlite = createCore();
   try {
     insertArticle(sqlite, "a");
@@ -456,11 +456,65 @@ test("fast list falls back to the full composition for tags, q and ids", async (
     assert.deepEqual((await repo.listArticles({ tag: "first-amendment" })).items.map((i) => i.slug), ["a"]);
     assert.deepEqual((await repo.listArticles({ ids: ["b"] })).items.map((i) => i.slug), ["b"]);
     assert.deepEqual((await repo.listArticles({ tag: "missing" })).items, []);
-    // q is not a D1 in-memory filter (search is a separate M7 surface); the
-    // fallback must engage and never issue the fast eligible SQL.
-    await repo.listArticles({ q: "Title a" });
-    assert.equal(captured.filter((call) => call.sql.includes("from article_publications_p3 p")).length, 0,
-      "the fast path must never run for q");
+    assert.equal(captured.filter((call) => call.sql.includes("from articles a indexed by articles_public_list_idx")).length, 0,
+      "tags and ids must keep the full composition");
+
+    // A query-only `q` is not a D1 list predicate (search is the separate M7
+    // surface), so the crawlable list must not pay for the full-corpus
+    // composition. The bounded window returns the same rows/order/total policy.
+    const fastBefore = captured.filter((call) => call.sql.includes("from articles a indexed by articles_public_list_idx")).length;
+    const withoutQuery = await repo.listArticles({ page: 1, pageSize: 1, count: "none", includeViewCounts: false });
+    const withQuery = await repo.listArticles({ q: "Title a", page: 1, pageSize: 1, count: "none", includeViewCounts: false });
+    assert.deepEqual(withQuery.items.map((i) => i.slug), withoutQuery.items.map((i) => i.slug));
+    assert.equal(withQuery.pageInfo.total, withoutQuery.pageInfo.total);
+    assert.equal(withQuery.pageInfo.hasMore, withoutQuery.pageInfo.hasMore);
+    assert.equal(withQuery.pageInfo.totalIsExact, withoutQuery.pageInfo.totalIsExact);
+    assert.equal(captured.filter((call) => call.sql.includes("from articles a indexed by articles_public_list_idx")).length, fastBefore + 2,
+      "q on the crawlable list must use the bounded candidate SQL");
+
+    // An explicit exact count keeps the legacy composition and its exact total;
+    // search/API callers never see an approximate count.
+    const exactCaptured: Captured[] = [];
+    const exactRepo = createD1ArticleReadRepository({ binding: binding(sqlite, exactCaptured), fastList: true, maxRows: 10_000 });
+    const exact = await exactRepo.listArticles({ q: "Title a", pageSize: 1, count: "exact", includeViewCounts: false });
+    assert.equal(exact.pageInfo.totalIsExact, true);
+    assert.equal(exactCaptured.filter((call) => call.sql.includes("from articles a indexed by articles_public_list_idx")).length, 0,
+      "an exact count must not use the approximate fast path");
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("query-only q matches fastList=false for rows, pagination and visibility", async () => {
+  const sqlite = createCore();
+  try {
+    const published = ["p-0", "p-1", "p-2", "p-3", "p-4"];
+    for (const [index, id] of published.entries()) {
+      insertArticle(sqlite, id, { publishedAt: `2026-02-${String(index + 1).padStart(2, "0")}T00:00:00.000Z` });
+    }
+    insertArticle(sqlite, "private", { metadata: NOT_PUBLISHABLE });
+    insertArticle(sqlite, "withdrawn", { p3State: "withdrawn" });
+    insertArticle(sqlite, "needs-review", { status: "needs_review" });
+    insertArticle(sqlite, "stale", { stale: 1 });
+
+    const fast = createD1ArticleReadRepository({ binding: binding(sqlite), fastList: true, maxRows: 10_000 });
+    const legacy = createD1ArticleReadRepository({ binding: binding(sqlite), fastList: false, maxRows: 10_000 });
+    const filters = { q: "Title p", count: "none" as const, includeViewCounts: false };
+
+    for (const page of [1, 2, 3]) {
+      const fastPage = await fast.listArticles({ ...filters, page, pageSize: 2 });
+      const legacyPage = await legacy.listArticles({ ...filters, page, pageSize: 2 });
+      assert.deepEqual(fastPage.items.map((item) => item.slug), legacyPage.items.map((item) => item.slug));
+      assert.deepEqual(fastPage.pageInfo, legacyPage.pageInfo);
+    }
+
+    const visible = await fast.listArticles({ ...filters, pageSize: 50 });
+    assert.deepEqual(visible.items.map((item) => item.slug), [...published].reverse());
+    assert.deepEqual(
+      visible.items.map((item) => item.slug).filter((slug) => ["private", "withdrawn", "needs-review", "stale"].includes(slug)),
+      [],
+      "q must not change public visibility",
+    );
   } finally {
     sqlite.close();
   }

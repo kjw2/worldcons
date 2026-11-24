@@ -1,3 +1,4 @@
+import { unstable_cache as plainUnstableCache } from "next/cache";
 import { freshnessAwarePublicCache as unstable_cache } from "@/lib/public-freshness-cache";
 import { NextResponse } from "next/server";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG } from "@/lib/public-content-cache";
@@ -7,6 +8,17 @@ import { parseArticleListApiParams, publicApiValidationErrorResponse } from "@/l
 import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
 
 export const revalidate = 60;
+
+// Jurisdiction counts are public filter metadata, not article content and not
+// an approval state. Keep them on the same plain cache policy the crawlable
+// /list filter panel already uses: while the E2E generation tables exist the
+// surrounding payload deliberately bypasses the content cache, but the full
+// jurisdiction aggregate does not need to rerun on every range request.
+const getHomeRangeJurisdictionCounts = plainUnstableCache(
+  async (range: ArticleListFilters["range"]) => listJurisdictionArticleCounts([], { range }),
+  ["home-range-jurisdiction-counts-v1"],
+  { revalidate: 60, tags: [PUBLIC_ARTICLE_COUNTS_CACHE_TAG] },
+);
 
 function canUseJurisdictionTotal(filters: ArticleListFilters) {
   return publicArticleListCountMode(filters) === "none";
@@ -39,7 +51,7 @@ const getHomeRangePayload = unstable_cache(
       // Narrow filters stay on the bounded fast path; only the explicit
       // `/api/articles?count=exact` surface may request a full exact count.
       listArticles({ ...filters, count: "none" }),
-      listJurisdictionArticleCounts([], { range: filters.range }),
+      getHomeRangeJurisdictionCounts(filters.range),
     ]);
 
     return {

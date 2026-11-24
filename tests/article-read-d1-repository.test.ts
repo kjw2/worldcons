@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import {
   D1_RUNTIME_BINDING_NAMES,
@@ -39,9 +40,16 @@ function evaluate(sql: string, params: unknown[], tables: Record<string, Record<
   const whereMatch = new RegExp(` where (.*?)(?= order by | limit | offset |$)`).exec(sql);
   if (whereMatch) {
     for (const predicate of whereMatch[1].split(" and ")) {
+      const orMatch = new RegExp(`^(${IDENT}) = \\? or (${IDENT}) = \\?$`).exec(predicate);
       const inMatch = new RegExp(`^(${IDENT}) in \\(([?](, \\?)*)\\)$`).exec(predicate);
       const cmpMatch = new RegExp(`^(${IDENT}) (=|>=|!=) \\?$`).exec(predicate);
-      if (inMatch) {
+      if (orMatch) {
+        const leftValue = params[p];
+        const rightValue = params[p + 1];
+        p += 2;
+        const [, leftColumn, rightColumn] = orMatch;
+        rows = rows.filter((row) => row[leftColumn] === leftValue || row[rightColumn] === rightValue);
+      } else if (inMatch) {
         const values = params.slice(p, p + inMatch[2].split(",").length);
         p += values.length;
         const column = inMatch[1];
@@ -424,7 +432,35 @@ test("D1 article adapter listArticles applies source/jurisdiction/type/language/
   assert.deepEqual((await repository.listArticles({ ids: ["a"] })).items.map((i) => i.slug), ["a"]);
   assert.deepEqual((await repository.listArticles({ tag: "first-amendment" })).items.map((i) => i.slug), ["a"]);
   assert.deepEqual((await repository.listArticles({ tag: "missing-tag" })).items, []);
+  const tagReads = fake.calls.filter((call) => call.sql.includes("where slug = ? or name = ?"));
+  assert.deepEqual(tagReads.map((call) => call.params), [
+    ["first-amendment", "first-amendment", 2001],
+    ["missing-tag", "missing-tag", 2001],
+  ]);
   assert.deepEqual((await repository.listArticles({ range: "month" })).items.map((i) => i.slug), ["b"]);
+});
+
+test("fake D1 slug/name OR evaluates the same union as SQLite", () => {
+  const sql = "select id from tags where slug = ? or name = ? order by id limit ?";
+  const bind = ["first-amendment", "first-amendment", 100];
+  const rows = [
+    { id: "a-slug", slug: "first-amendment", name: "Slug Only" },
+    { id: "b-name", slug: "name-only", name: "first-amendment" },
+    { id: "c-both", slug: "first-amendment", name: "first-amendment" },
+    { id: "d-other", slug: "other", name: "Other" },
+  ];
+  const sqlite = new DatabaseSync(":memory:");
+  try {
+    sqlite.exec("create table tags (id text primary key, slug text not null, name text not null)");
+    const insert = sqlite.prepare("insert into tags (id, slug, name) values (?, ?, ?)");
+    for (const row of rows) insert.run(row.id, row.slug, row.name);
+    const actual = (sqlite.prepare(sql).all(...bind) as { id: string }[]).map((row) => row.id);
+    const { rows: evaluated } = evaluate(sql, bind, { tags: rows });
+    assert.deepEqual(evaluated.map((row) => row.id), actual);
+    assert.deepEqual(actual, ["a-slug", "b-name", "c-both"]);
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("D1 article adapter batches large tag article-id filters below the bind ceiling", async () => {

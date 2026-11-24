@@ -620,15 +620,22 @@ export function createD1ArticleReadRepository(
 
   /**
    * Whether the bounded SQL fast path may serve this request. It only handles the
-   * common public shapes — unfiltered or source/jurisdiction/type/language/range
-   * — for the first (bounded) pages, and only when no tag/q/ids/includeUnpublished
+   * common public shapes - unfiltered or source/jurisdiction/type/language/range
+   * - for the first (bounded) pages, and only when no tag/ids/includeUnpublished
    * complexity or catalog V4 relation is involved. Anything else falls back to the
    * full in-JS composition so semantics are never approximated.
+   *
+   * A query-only `q` is deliberately not a candidate predicate on this D1 list
+   * reader: search is the separate `/search` surface, and the crawlable list
+   * never ran a text filter here. It therefore must not force the full-corpus
+   * composition either. The bounded window reads exactly the same unfiltered
+   * rows (same eligibility, order, overlay and approximate count policy) while
+   * an explicit exact count still falls back to the legacy composition.
    */
   function fastListEligible(filters: ArticleListFilters, countMode: string): boolean {
     if (!dependencies.fastList) return false;
     if (filters.includeUnpublished) return false;
-    if (filters.q || filters.tag) return false;
+    if (filters.tag) return false;
     if (filters.ids) return false;
     if (countMode !== "none") return false;
     if (catalogSourceOnlyEnabled()) return false;

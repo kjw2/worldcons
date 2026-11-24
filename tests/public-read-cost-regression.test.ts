@@ -220,6 +220,59 @@ test("D1 read-cost probe accumulates result.meta.rows_read and flags missing met
   assert.equal(missing.rowsReadAvailable, false);
 });
 
+test("query-only public list reads stay on the bounded candidate window", async () => {
+  const sqlite = createCore();
+  seed(sqlite);
+  const captured: Captured[] = [];
+  const repository = createD1ArticleReadRepository({
+    binding: binding(sqlite, captured),
+    fastList: true,
+    maxRows: 10_000,
+  });
+
+  const result = await repository.listArticles({
+    q: "unused list query",
+    page: 1,
+    pageSize: 10,
+    count: "none",
+    includeViewCounts: false,
+  });
+  assert.equal(result.items.length, 10);
+  assert.equal(result.pageInfo.totalIsExact, false);
+
+  assert.ok(
+    captured.some((entry) => entry.sql.includes("from articles a indexed by articles_public_list_idx")),
+    "q on the crawlable list must use the bounded candidate query",
+  );
+  assert.ok(
+    !captured.some((entry) => entry.sql.includes("from articles where")),
+    "q must not materialize the full public candidate corpus",
+  );
+  assert.ok(
+    !captured.some((entry) => entry.sql.includes("from article_publications_p3 where")),
+    "q must not read every published P3 head through the legacy composition",
+  );
+
+  const [windowSize, windowOffset] = captured
+    .find((entry) => entry.sql.includes("from articles a indexed by articles_public_list_idx"))!
+    .params as [number, number];
+  assert.equal(windowOffset, 0);
+  assert.ok(windowSize <= 10 + 60 + 60 + 1, `the q window must stay page-sized, got ${windowSize}`);
+
+  const exactCaptured: Captured[] = [];
+  const exactRepository = createD1ArticleReadRepository({
+    binding: binding(sqlite, exactCaptured),
+    fastList: true,
+    maxRows: 10_000,
+  });
+  const exact = await exactRepository.listArticles({ q: "unused list query", pageSize: 10, count: "exact" });
+  assert.equal(exact.pageInfo.totalIsExact, true);
+  assert.ok(
+    !exactCaptured.some((entry) => entry.sql.includes("from articles a indexed by articles_public_list_idx")),
+    "an explicit exact count keeps the legacy composition",
+  );
+});
+
 test("the crawlable /list surface never requests a full exact count and keeps filter data on a plain cache", () => {
   const listPage = readFileSync(new URL("../app/list/page.tsx", import.meta.url), "utf8");
   assert.match(listPage, /getListFilterData = plainUnstableCache\(/);
@@ -228,6 +281,13 @@ test("the crawlable /list surface never requests a full exact count and keeps fi
   assert.doesNotMatch(listPage, /count: countFromJurisdictions \? "none" : "exact"/);
   const homeRange = readFileSync(new URL("../app/api/home/range/route.ts", import.meta.url), "utf8");
   assert.doesNotMatch(homeRange, /count: "exact"/);
+  assert.match(homeRange, /getHomeRangeJurisdictionCounts = plainUnstableCache\(/);
+  assert.match(homeRange, /tags: \[PUBLIC_ARTICLE_COUNTS_CACHE_TAG\]/);
+  assert.doesNotMatch(homeRange, /listJurisdictionArticleCounts\(\[\], \{ range: filters\.range \}\)/);
+  const homePage = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(homePage, /getHomeJurisdictionArticleCounts = plainUnstableCache\(/);
+  assert.match(homePage, /tags: \[PUBLIC_ARTICLE_COUNTS_CACHE_TAG\]/);
+  assert.doesNotMatch(homePage, /listJurisdictionArticleCounts\(jurisdictions\)/);
 });
 
 test("tag-filter resolution uses one bounded tags lookup instead of slug+name scans", async () => {
